@@ -1,0 +1,10 @@
+--pythonpath .
+--listener   libs.robot.listeners.Listener:Sqlite
+--variable   Env:QA
+--variable   Browser
+--suite      Demo
+--name       "Demo Test"
+--include    Demo
+--exclude    Ignore
+--outputdir  out/Demo
+tests/Demo
