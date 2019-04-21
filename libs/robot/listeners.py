@@ -3,17 +3,22 @@
 
 __author__ = 'Tangxing Zhou'
 
-import os
+import os, sys
 from datetime import datetime
 from robot.libraries.BuiltIn import BuiltIn
+from robot.errors import DataError
+from libs.databases.Sqlite import Sqlite
+from libs.reporting import *
 
 
-class Listener(object):
+class Listener2(object):
     ROBOT_LISTENER_API_VERSION = 2
 
     def __init__(self, db_type):
         self.__db_type = db_type.upper()
         self.__db = None
+        self.__report_to_db = 'Y'
+        self.__send_email_report = 'N'
 
     def start_suite(self, name, attrs):
         """
@@ -47,7 +52,7 @@ class Listener(object):
         db_login = tuple(map(BuiltIn().get_variable_value, map(lambda x: '${' + self.__db_type + x + '}',
                                                                ('_HOST', '_USER', '_PSW', '_DB', '_PORT'))))
         if attrs['id'] == 's1':
-            start_time = datetime.strptime(attrs['starttime'], '%Y-%m-%d %H:%M:%S.%f').strftime('%Y-%m-%d_%H-%M-%S')
+            start_time = datetime.strptime(attrs['starttime'], '%Y%m%d %H:%M:%S.%f').strftime('%Y-%m-%d_%H-%M-%S')
 
     def start_test(self, name, attrs):
         """
@@ -193,4 +198,17 @@ class Listener(object):
         Called when the whole test execution ends.
         :return:
         """
-        pass
+        if self.__report_to_db == 'Y':
+            verbose_stream = sys.stdout
+            output_xml_path = os.path.join('out', 'output.xml')
+            _db = Sqlite(os.path.join('out', 'robot_results.db'), verbose_stream)
+            _db_writer = DatabaseWriter(_db.connection, verbose_stream)
+            _robot_result_parser = RobotResultsParser(_db_writer, verbose_stream)
+            try:
+                test_run_id = _robot_result_parser.xml_to_db(output_xml_path)
+                _db_writer.commit()
+            except DataError as message:
+                sys.stderr.write('dbbot: error: Invalid XML: %s\n\n' % message)
+                exit(1)
+            finally:
+                _db_writer.close()
