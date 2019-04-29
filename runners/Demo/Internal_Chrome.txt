@@ -1,10 +1,24 @@
 --pythonpath .
---listener   libs.robot.listeners.Listener:Sqlite
---variable   Env:QA
---variable   Browser
---suite      Demo
---name       "Demo Test"
---include    Demo
---exclude    Ignore
---outputdir  out/Demo
-tests/Demo
+--listener        libs.robot.listeners.Listener2:Sqlite
+#--prerunmodifier libs.robot.preruns.PreRun:test
+--variable        ENV:QA
+--variable        Browser:Chrome
+--variable        IntExt:Internal
+--variable        LoginID:tz47016
+--variable        LoginPWD:***
+--variable        RunType:Smoke
+--variable        RemoteMachine:localhost
+--variable        RemotePort:4444
+--variable        Headless:N
+--variable        ReportToDB:Y
+--variable        SendEmail:N
+--variable        EmailReceivers:xxx@163.com,xxx@gmail.com
+--variable        UpdateJira:N
+#--include         Demo
+--exclude         Ignore
+--suite           Demo
+#--test            Demo
+#--name            "Demo Test"
+outputdir         out\project\subproject
+--debugfile       debug.log
+tests\project\subproject
