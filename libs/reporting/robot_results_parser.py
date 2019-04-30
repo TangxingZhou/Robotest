@@ -34,7 +34,6 @@ class RobotResultsParser(object):
         self._parse_errors(test_run.errors.messages, test_run_id)
         self._parse_statistics(test_run.statistics, test_run_id)
         self._parse_suite(test_run.suite, test_run_id)
-
         return test_run_id
 
     @classmethod
@@ -211,9 +210,25 @@ class RobotResultsParser(object):
         '''
         return self._db.select(sql.format(test_run_id,))
 
+    def get_suites_of_test_run(self, test_run_id):
+        sql = '''
+        SELECT ss.suite_id, s.name [suite_name], s.suite_key [suite_key], ss.status [status], ss.passed [passed], ss.failed [failed], ss.elapsed [elapsed], s.parent_id [parent_id], s.source [source], s.doc [doc] FROM suite_status ss
+        JOIN suites s on s.id = ss.suite_id
+        WHERE ss.test_run_id = {};
+        '''
+        return self._db.select(sql.format(test_run_id,))
+
+    def get_suite(self, suite_id):
+        sql = '''
+        SELECT ss.suite_id, s.name [suite_name], s.suite_key [suite_key], ss.status [status], ss.passed [passed], ss.failed [failed], ss.elapsed [elapsed], s.parent_id [parent_id], s.source [source], s.doc [doc] FROM suite_status ss
+        JOIN suites s on s.id = ss.suite_id
+        WHERE ss.suite_id = {};
+        '''
+        return self._db.select(sql.format(suite_id, ))
+
     def get_tests_of_test_run(self, test_run_id):
         sql = '''
-        SELECT ts.test_id, s.name [suite_name], t.name [test_name], ts.status [test_status], t.doc [test_doc] FROM test_status ts
+        SELECT ts.test_id, s.id [suite_id], s.name [suite_name], t.name [test_name], ts.status [test_status], t.doc [test_doc] FROM test_status ts
         JOIN tests t on ts.test_id = t.id
         JOIN suites s on s.id = t.suite_id
         WHERE ts.test_run_id = {};
@@ -222,7 +237,7 @@ class RobotResultsParser(object):
 
     def get_test(self, test_id):
         sql = '''
-        SELECT ts.test_id, s.name [suite_name], t.name [test_name], ts.status [test_status], t.doc [test_doc] FROM test_status ts
+        SELECT ts.test_id, s.id [suite_id], s.name [suite_name], t.name [test_name], ts.status [test_status], t.doc [test_doc] FROM test_status ts
         JOIN tests t on ts.test_id = t.id
         JOIN suites s on s.id = t.suite_id
         WHERE ts.test_id = {};

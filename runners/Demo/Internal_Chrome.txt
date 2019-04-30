@@ -14,6 +14,10 @@
 --variable        SendEmail:N
 --variable        EmailReceivers:xxx@163.com,xxx@gmail.com
 --variable        UpdateJira:N
+#--variable        BuildNumber:0
+#--variable        BuildID:0
+#--variable        BuildTypeID:0
+#--variable        BuildResultsTab:buildResultRobot
 #--include         Demo
 --exclude         Ignore
 --suite           Demo

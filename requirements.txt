@@ -3,3 +3,4 @@ robotframework-seleniumlibrry
 robotremoteserver
 pymssql
 mysqlclient
+requests

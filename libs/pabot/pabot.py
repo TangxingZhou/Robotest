@@ -28,6 +28,7 @@ from robot.utils import ArgumentParser, SYSTEM_ENCODING, is_unicode, PY2
 import signal
 from . import pabotlib
 from .result_merger import merge
+from libs.reporting.send_reports import SendReports
 
 try:
     import queue
@@ -1104,8 +1105,9 @@ def main(args):
                     random.shuffle(suite_group)
                 _parallel_execute(datasources, opts_for_run, outs_dir, pabot_args,
                                   suite_group)
-            sys.exit(_report_results(outs_dir, pabot_args, options, start_time_string,
-                                     _get_suite_root_name(suite_names)))
+                _report_results(outs_dir, pabot_args, options, start_time_string,
+                                            _get_suite_root_name(suite_names))
+            SendReports(datasources, opts_for_run)
         else:
             print('No tests to execute')
     except Information as i:
