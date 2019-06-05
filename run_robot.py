@@ -9,7 +9,7 @@ MAX_ROBOT_PROCESSES = 5
 def args_parser(name, description=None, usage='usage: %(prog)s [options] args'):
     parser = argparse.ArgumentParser(prog=name, description=description, usage=usage)
     parser.add_argument( '--processes', action='store', required=False, type=int, choices=range(1, MAX_ROBOT_PROCESSES + 1), dest='robot_processes', help='Run robot in parallel.')
-    parser.add_argument('--verbose', action='store_true', required=False, default=True, dest='verbose', help='Show the verbose information, on is by default.')
+    parser.add_argument('--verbose', action='store_true', required=False, default=False, dest='verbose', help='Show the verbose information, off is by default.')
     return parser
 
 
