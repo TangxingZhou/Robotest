@@ -1,5 +1,8 @@
+--index https://mirrors.aliyun.com/pypi/simple
+--trusted-host mirrors.aliyun.com
+
 robotframework
-robotframework-seleniumlibrry
+robotframework-seleniumlibrary
 robotremoteserver
 pymssql
 mysqlclient
