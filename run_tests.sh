@@ -8,7 +8,6 @@ function terminate_service() {
     if [ $(ps -ef | grep -v grep | grep $1 | wc -l) -ne 0 ]; then
         for pid in $(ps -ef | grep -v grep | grep $1 | awk '{print $2}')
         do
-            echo $pid
             kill $pid
         done
         sleep 2
