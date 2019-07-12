@@ -15,7 +15,7 @@ Init Suite Variables
     Set Suite Variable  ${ENV}  ${ENV.upper()}
     Run Keyword If  '${Project}'=='${None}'         Fail    'Project' variable is not available.
     ...     ELSE                                    Import Variables    ${EXECDIR}/resources/${Project}/variables.py
-    Run Keyword If  '${Sub Project}'=='${None}'     Fail    'Project' variable is not available.
+    Run Keyword If  '${Sub Project}'=='${None}'     Fail    'Sub Project' variable is not available.
     ...     ELSE                                    Set Suite Variable  ${Base URL}     ${${Sub Project}_${ENV}_BASE}
     Create Directory    ${Screenshots Directory}
     Empty Directory     ${Screenshots Directory}

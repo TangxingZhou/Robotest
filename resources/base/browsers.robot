@@ -3,8 +3,9 @@ Library     String
 Library     SeleniumLibrary
 
 *** Variables ***
+${Web_Drivers_Directory}    ${EXEC_DIR}/resources/web_drivers
 &{Executable}               Chrome=chromedriver     Ie=IEDriverServer.exe   Edge=MicrosoftWebDriver.exe     Firefox=geckodriver
-@{Chrome Default Options}   start-maximized     enable-automation   disable-infobars    test-type
+@{Chrome Default Options}   start-maximized         enable-automation       disable-infobars                test-type
 &{Chrome Prefs}             download.prompt_for_download=${False}   download.default_directory=${Download Directory}
 ${Internal Proxy URL}       http://xxx.com
 ${External Proxy URL}       xxx.com:8080
@@ -87,7 +88,7 @@ Init Webdriver
     ${remote port}=     Get Variable Value  ${RemotePort}       ${Empty}
     ${browser}=         Get Browser Name From Options           ${options}
     Run Keyword If  '${remote host}'=='${Empty}' or '${remote port}'=='${Empty}'
-    ...             Create Webdriver    ${browser}  options=${options}  #executable_path=${Executable.${browser}}
+    ...             Create Webdriver    ${browser}  options=${options}  executable_path=${Web_Drivers_Directory}/${Executable['${browser}']}
     ...     ELSE    Create Webdriver    Remote      options=${options}  command_executor=http://${remote host}:${remote port}/wd/hub
 
 Upper First Letter of String
@@ -99,7 +100,7 @@ Upper First Letter of String
 
 Get Browser Name From Options
     [Arguments]     ${options}
-    ${browser}=     Replace String Using Regexp     ${options.KEY}  (.*:/Options)   ${Empty}
+    ${browser}=     Replace String Using Regexp     ${options.KEY}  (.*:|Options)   ${Empty}
     ${browser}=     Upper First Letter of String    ${browser}
     [Return]    ${browser}
 
