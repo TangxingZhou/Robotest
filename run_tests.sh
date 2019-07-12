@@ -13,7 +13,9 @@ elif [ "$1" = "--selenium-server" ]; then
         done
         sleep 2
     fi
-    sh resources/web_drivers/selenium_server/start_selenium_server.sh $exec_dir
+    cd resources/web_drivers/selenium_server
+    bash start_selenium_server.sh $exec_dir
+    cd -
 else
     python3 -m run_robot $*
 fi
