@@ -59,7 +59,13 @@ class Listener2(object):
             paths = os.path.relpath(os.path.dirname(attrs['source']), os.path.join(self.__exec_dir, 'tests')).split(path_separator)
         else:
             paths = os.path.relpath(attrs['source'], os.path.join(self.__exec_dir, 'tests')).split(path_separator)
-        self.__project, self.__sub_project = paths
+        if len(paths) == 1:
+            if paths[0].startswith('.'):
+                self.__project, self.__sub_project = '', ''
+            else:
+                self.__project, self.__sub_project = paths[0], ''
+        else:
+            self.__project, self.__sub_project = paths
         BuiltIn().set_suite_variable('${Project}', self.__project)
         BuiltIn().set_suite_variable('${Sub Project}', self.__sub_project)
         keywords_dir = os.path.join('resources', self.__project, self.__sub_project, 'keywords')

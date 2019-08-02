@@ -23,6 +23,9 @@ elif [ "$1" = "--sss" ]; then
     cd -
 elif [ "$1" = "--tss" ]; then
     terminate_service selenium-server
+elif [ "$1" = "--testdoc" ]; then
+    shift
+    python3 -m robot.testdoc $*
 else
     python3 -m run_robot $*
 fi
