@@ -356,7 +356,7 @@ class Listener2(object):
             finally:
                 _sqlite_writer.close()
                 # self.__db.close()
-            if self.__send_email_report == 'N':
+            if self.__send_email_report == 'Y':
                 email_client = EmailReport(*self.__email_info)
                 try:
                     email_client.login()
