@@ -85,12 +85,13 @@ class RobotResultsParser(object):
             'passed': stat.passed
         })
 
-    def _parse_suite(self, suite, test_run_id, parent_suite_id=None):
+    def _parse_suite(self, suite, test_run_id, parent_suite_id=None, parent_suite=''):
         self._verbose('--> Parsing suite: {}'.format(suite.name))
         try:
             suite_id = self._db.insert('suites', {
                 'suite_key': suite.id,
                 'parent_id': parent_suite_id,
+                'parent_suite': parent_suite,
                 'name': suite.name,
                 'source': suite.source,
                 'doc': suite.doc
@@ -101,7 +102,7 @@ class RobotResultsParser(object):
                 'source': suite.source
             })
         self._parse_suite_status(test_run_id, suite_id, suite)
-        self._parse_suites(suite, test_run_id, suite_id)
+        self._parse_suites(suite, test_run_id, suite_id, '{}.{}'.format(parent_suite, suite.name).strip('.'))
         self._parse_tests(suite.tests, test_run_id, suite_id)
         self._parse_keywords(suite.keywords, test_run_id, suite_id, None)
 
@@ -115,8 +116,8 @@ class RobotResultsParser(object):
             'status': suite.status
         })
 
-    def _parse_suites(self, suite, test_run_id, parent_suite_id):
-        [self._parse_suite(subsuite, test_run_id, parent_suite_id) for subsuite in suite.suites]
+    def _parse_suites(self, suite, test_run_id, parent_suite_id, parent_suite):
+        [self._parse_suite(subsuite, test_run_id, parent_suite_id, parent_suite) for subsuite in suite.suites]
 
     def _parse_tests(self, tests, test_run_id, suite_id):
         [self._parse_test(test, test_run_id, suite_id) for test in tests]

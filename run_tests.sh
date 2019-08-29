@@ -1,28 +1,16 @@
 #!/usr/bin/env bash
 
 set -e
-exec_dir=`pwd`
-selenium_server_starter_dir=resources/web_drivers/selenium_server
 
-function terminate_service() {
-    if [ $(ps -ef | grep -v grep | grep $1 | wc -l) -ne 0 ]; then
-        for pid in $(ps -ef | grep -v grep | grep $1 | awk '{print $2}')
-        do
-            kill $pid
-        done
-        sleep 2
-    fi
-}
+selenium_server_starter_dir=resources/web_drivers/selenium_server
 
 if [ "$1" = "--init" ]; then
     python3 -m pip install --user -r requirements.txt
 elif [ "$1" = "--sss" ]; then
-    terminate_service selenium-server
-    cd $selenium_server_starter_dir
-    bash start_selenium_server.sh $exec_dir
-    cd -
+    bash $selenium_server_starter_dir/selenium_server.sh -t
+    bash $selenium_server_starter_dir/selenium_server.sh -s
 elif [ "$1" = "--tss" ]; then
-    terminate_service selenium-server
+    bash $selenium_server_starter_dir/selenium_server.sh -t
 elif [ "$1" = "--testdoc" ]; then
     shift
     python3 -m robot.testdoc $*

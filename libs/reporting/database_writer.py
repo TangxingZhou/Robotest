@@ -66,6 +66,7 @@ class DatabaseWriter(object):
         self._create_table('suites', {
             'suite_key': 'TEXT NOT NULL',
             'parent_id': 'INTEGER REFERENCES suites',
+            'parent_suite': 'TEXT NOT NULL',
             'name': 'TEXT NOT NULL',
             'source': 'TEXT',
             'doc': 'TEXT'
@@ -179,6 +180,23 @@ class DatabaseWriter(object):
             raise Exception('Query did not yield id, even though it should have.'
                             '\nSQL statement was:\n{}\nArguments were:\n{}'.format(sql_statement, list(criteria.values())))
         return res[0]
+
+    def fetch_records(self, table_columns, **criteria):
+        columns = [key for key in table_columns.keys() if key != '__table__']
+        sql_statement = 'SELECT {} FROM {} WHERE '.format(', '.join(columns), table_columns['__table__'])
+        sql_statement += ' AND '.join('{}=?'.format(key) for key in criteria.keys())
+        self.__cursor.execute(sql_statement, list(criteria.values()))
+        records = []
+        for out in self.__cursor.fetchall():
+            params = {}
+            for index, field in enumerate(columns):
+                if isinstance(out[index], table_columns[field]):
+                    params[field] = out[index]
+                else:
+                    raise TypeError('The type of \'{}\' should be {} but it\'s {}.'.
+                                    format(field, table_columns[field], type(out[index])))
+            records.append(type('dict2obj', (dict,), params)())
+        return records
 
     def insert(self, table_name, criteria):
         sql_statement = self._format_insert_statement(table_name, list(criteria.keys()))

@@ -4,10 +4,11 @@
 __author__ = 'Tangxing Zhou'
 
 import os, sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from robot.libraries.BuiltIn import BuiltIn
 from libs.databases.Sqlite import Sqlite
 from libs.reporting import *
+from libs.reporting.email_report import *
 
 
 class Listener2(object):
@@ -56,7 +57,8 @@ class Listener2(object):
         int_or_ext = BuiltIn().get_variable_value('${IntExt}', 'Internal')
         browser = BuiltIn().get_variable_value('${Browser}', 'Chrome')
         if os.path.isfile(attrs['source']):
-            paths = os.path.relpath(os.path.dirname(attrs['source']), os.path.join(self.__exec_dir, 'tests')).split(path_separator)
+            paths = os.path.relpath(os.path.dirname(attrs['source']),
+                                    os.path.join(self.__exec_dir, 'tests')).split(path_separator)
         else:
             paths = os.path.relpath(attrs['source'], os.path.join(self.__exec_dir, 'tests')).split(path_separator)
         if len(paths) == 1:
@@ -81,8 +83,9 @@ class Listener2(object):
             BuiltIn().import_variables('${EXECDIR}/resources/${Project}/variables.py')
             self.__db_info = tuple(map(BuiltIn().get_variable_value, map(lambda x: '${' + self.__db_type + '_' + x + '}',
                                                                   ('HOST', 'USER', 'PSW', 'DB', 'PORT'))))
-            self.__email_info = tuple(map(BuiltIn().get_variable_value, map(lambda x: '${' + 'REPORT_EMAIL_' + x + '}',
-                                                                  ('HOST', 'FROM', 'TO'))))
+            self.__email_info = tuple(map(BuiltIn().get_variable_value,
+                                          map(lambda x: '${' + 'EMAIL_' + x + '}',
+                                              ('SERVER', 'SENDER_ACCOUNT', 'SENDER_PSW', 'RECEIVERS', 'SUBJECT'))))
             if self.__report_to_db == 'Y':
                 self.__db = None
                 if self.__db is not None:
@@ -237,9 +240,43 @@ class Listener2(object):
         if self.__report_to_db == 'Y':
             verbose_stream = sys.stdout
             output_xml_path = os.path.join(self.__exec_dir, 'out', self.__project, self.__sub_project, 'output.xml')
-            _sqlite = Sqlite(os.path.join(self.__exec_dir, 'out', self.__project, self.__sub_project, 'robot_results.db'), verbose_stream)
+            _sqlite = Sqlite(os.path.join(self.__exec_dir, 'out', self.__project, 'robot_results.db'), verbose_stream)
             _sqlite_writer = DatabaseWriter(_sqlite.connection, verbose_stream)
             _robot_result_parser = RobotResultsParser(_sqlite_writer, verbose_stream)
+
+            def format_duration(duration):
+                return (datetime.strptime('00:00:00.000000', '%H:%M:%S.%f') + timedelta(milliseconds=duration)). \
+                           strftime('%H:%M:%S.%f')[:-3]
+
+            def dict_add(this, other):
+                new_ = this
+                for k, v in other.items():
+                    new_[k] = v
+                return new_
+
+            def get_statistics(samples):
+                statistics_total, statistics_passed, statistics_failed = 0, 0, 0
+                for sample in samples:
+                    if hasattr(sample, 'status'):
+                        if sample.status == 'PASS':
+                            statistics_passed += 1
+                        else:
+                            statistics_failed += 1
+                    elif hasattr(sample, 'passed'):
+                        if sample.passed == 1:
+                            statistics_passed += 1
+                        else:
+                            statistics_failed += 1
+                statistics_total = statistics_passed + statistics_failed
+                return type('new_dict', (dict,), {'__add__': dict_add})(
+                    total=statistics_total,
+                    passed=statistics_passed,
+                    failed=statistics_failed,
+                    passed_percentage=round(statistics_passed / statistics_total * 100),
+                    failed_percentage=100 - round(statistics_passed / statistics_total * 100)
+                )
+
+            build, all_statistics, tags_statistics, suites_statistics, tests_statistics = {}, [], [], [], []
             try:
                 self.__tr_id = _robot_result_parser.xml_to_db(output_xml_path)
                 _sqlite_writer.commit()
@@ -249,16 +286,97 @@ class Listener2(object):
                     for test_keyword in _robot_result_parser.get_keywords_of_test(self.__tr_id, self.__tc_id):
                         # TODO:
                         pass
+                test_run_status = \
+                _sqlite_writer.fetch_records(TestRunStatus, test_run_id=self.__tr_id, name='All Tests')[0]
+                test_run = _sqlite_writer.fetch_records(TestRuns, id=self.__tr_id)[0]
+                if test_run_status.passed == 1:
+                    build = dict(
+                        name=test_run_status.name,
+                        date=datetime.strptime(test_run.finished_at, '%Y-%m-%d %H:%M:%S.%f').strftime('%Y-%m-%d'),
+                        duration=test_run_status.elapsed, result='SUCCESS'
+                    )
+                else:
+                    build = dict(
+                        name=test_run_status.name,
+                        date=datetime.strptime(test_run.finished_at, '%Y-%m-%d %H:%M:%S.%f').strftime('%Y-%m-%d'),
+                        duration=test_run_status.elapsed, result='FAILURE'
+                    )
+
+                all_statistics = [
+                    get_statistics(_sqlite_writer.fetch_records(TestStatus, test_run_id=self.__tr_id)) +
+                    {'name': status.name, 'duration': format_duration(status.elapsed)}
+                    for status in _sqlite_writer.fetch_records(TestRunStatus, test_run_id=self.__tr_id)
+                ]
+                suites_statistics = [
+                    get_statistics(
+                        [
+                            _sqlite_writer.fetch_records(TestStatus, test_run_id=self.__tr_id, test_id=test.id)[0]
+                            for test in tests[0]
+                        ]
+                    ) +
+                    {
+                        'name': '.'.join(
+                            [getattr(_sqlite_writer.fetch_records(Suites, id=tests[1].suite_id)[0], k) for k in
+                             ('parent_suite', 'name')]),
+                        'duration': format_duration(tests[1].elapsed)
+                    }
+                    for tests in
+                    [
+                        suite_tests for suite_tests in
+                        [
+                            (_sqlite_writer.fetch_records(Tests, suite_id=status.suite_id), status)
+                            for status in _sqlite_writer.fetch_records(SuiteStatus, test_run_id=self.__tr_id)
+                        ]
+                        if suite_tests[0]
+                    ]
+                ]
+                tags_statistics = [
+                    {
+                        'name': status.name,
+                        'total': status.passed + status.failed,
+                        'passed': status.passed,
+                        'failed': status.failed,
+                        'duration': format_duration(status.elapsed),
+                        'passed_percentage': round(status.passed / (status.passed + status.failed) * 100),
+                        'failed_percentage': 100 - round(status.passed / (status.passed + status.failed) * 100)
+                    }
+                    for status in _sqlite_writer.fetch_records(TestTagStatus, test_run_id=self.__tr_id)
+                ]
+                tests_statistics = [
+                    {
+                        'name': _sqlite_writer.fetch_records(Tests, id=status.test_id)[0].name,
+                        'duration': format_duration(status.elapsed),
+                        'status': status.status
+                    }
+                    for status in _sqlite_writer.fetch_records(TestStatus, test_run_id=self.__tr_id)
+                ]
             except Exception as e:
-                sys.stderr.write('[Sqlite ERROR]: Invalid XML: {}\n\n'.format(e))
+                sys.stderr.write('[Sqlite ERROR]: {}\n\n'.format(e))
                 exit(1)
             finally:
                 _sqlite_writer.close()
                 # self.__db.close()
-        if self.__send_email_report == 'Y':
-            # email_smtp = EmailReport(*self.__email_info)
-            # email_smtp.send(self.__db.db_client, self.__tr_id, self.__tr_name)
-            pass
+            if self.__send_email_report == 'N':
+                email_client = EmailReport(*self.__email_info)
+                try:
+                    email_client.login()
+                    email_client.render(
+                        template='resources/reporting/templates/email_report.html',
+                        out=os.path.join(self.__exec_dir, 'out', self.__project, 'email_report.html'),
+                        build=build,
+                        statistics=(
+                            {'title': 'Total Statistics', 'records': all_statistics},
+                            {'title': 'Statistics by Tag', 'records': tags_statistics},
+                            {'title': 'Statistics by Suite', 'records': suites_statistics}
+                        ),
+                        tests=tests_statistics
+                    )
+                    email_client.send()
+                except Exception as e:
+                    sys.stderr.write('[Email ERROR]: {}\n\n'.format(e))
+                    exit(1)
+                finally:
+                    email_client.quit()
 
 
 class Listener3(object):

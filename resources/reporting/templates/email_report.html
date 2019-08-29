@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Robot Report</title>
+    <style>
+        BODY, TABLE, TD, TH, P {
+          font-family: Calibri, Verdana, Helvetica, sans serif;
+          font-size: 12px;
+          color: black;
+        }
+        .console {
+          font-family: Courier New;
+        }
+        .filesChanged {
+          width: 10%;
+          padding-left: 10px;
+        }
+        .section {
+          width: 80%;
+          border: thin black dotted;
+        }
+        .td-title-main {
+          color: white;
+          font-size: 200%;
+          padding-left: 5px;
+          font-weight: bold;
+        }
+        .td-title {
+          color: white;
+          font-size: 120%;
+          font-weight: bold;
+          padding-left: 5px;
+          text-transform: uppercase;
+        }
+        .td-title-tests {
+          font-weight: bold;
+          font-size: 120%;
+        }
+        .td-header-maven-module {
+          font-weight: bold;
+          font-size: 120%;
+        }
+        .td-maven-artifact {
+          padding-left: 5px;
+        }
+        .tr-title {
+          background-color: {% if build.result == 'SUCCESS' %}#27AE60{% elif build.result == 'FAILURE' %}#E74C3C{% else %}#f4e242{% endif %};
+        }
+        .test {
+          padding-left: 20px;
+        }
+        .test-fixed {
+          color: #27AE60;
+        }
+        .test-failed {
+          color: #E74C3C;
+        }
+
+        table {
+          table-layout: fixed;
+          word-wrap: break-word;
+          empty-cells: show;
+          font-size: 1em;
+        }
+        th, td {
+            vertical-align: top;
+        }
+        br {
+            mso-data-placement: same-cell; /* maintain line breaks in Excel */
+        }
+        hr {
+            background: #ccc;
+            height: 1px;
+            border: 0;
+        }
+        a, a:link, a:visited {
+            text-decoration: none;
+            color: #15c;
+        }
+        a > img {
+            border: 1px solid #15c !important;
+        }
+        a:hover, a:active {
+            text-decoration: underline;
+            color: #61c;
+        }
+        .parent-name {
+            font-size: 0.7em;
+            letter-spacing: -0.07em;
+        }
+        .message {
+            white-space: pre-wrap;
+        }
+        /* Headers */
+        #header {
+            width: 65em;
+            height: 3em;
+            margin: 6px 0;
+        }
+        h1 {
+            float: left;
+            margin: 0 0 0.5em 0;
+            width: 75%;
+        }
+        h2 {
+            clear: left;
+        }
+        #generated {
+            float: right;
+            text-align: right;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+        /* Documentation headers */
+        .doc > h2 {
+            font-size: 1.2em;
+        }
+        .doc > h3 {
+            font-size: 1.1em;
+        }
+        .doc > h4 {
+            font-size: 1.0em;
+        }
+        /* Status text colors -- !important allows using them in links */
+        .fail {
+            color: #f33 !important;
+            font-weight: bold;
+        }
+        .pass {
+            color: #393 !important;
+        }
+        .label {
+            padding: 2px 5px;
+            font-size: 0.75em;
+            letter-spacing: 1px;
+            white-space: nowrap;
+            color: black;
+            background-color: #ddd;
+            border-radius: 3px;
+        }
+        .label.debug, .label.trace, .label.error, .label.keyword {
+            letter-spacing: 0;
+        }
+        .label.error, .label.fail, .label.pass, .label.warn {
+            color: #fff !important;
+            font-weight: bold;
+        }
+        .label.error, .label.fail {
+            background-color: #d9534f;
+        }
+        .label.pass {
+            background-color: #5cb85c;
+        }
+        .label.warn {
+            background-color: #ec971f;
+        }
+        /* Top right header */
+        #top-right-header {
+            position: fixed;
+            top: 0;
+            right: 0;
+            z-index: 1000;
+            width: 12em;
+            text-align: center;
+        }
+        #report-or-log-link a {
+            display: block;
+            background: black;
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            letter-spacing: 0.1em;
+            padding: 0.3em 0;
+            border-bottom-left-radius: 4px;
+        }
+        #report-or-log-link a:hover {
+            color: #ddd;
+        }
+        #log-level-selector {
+            padding: 0.3em 0;
+            font-size: 0.9em;
+            border-bottom-left-radius: 4px;
+            background: #ddd;
+        }
+        /* Statistics table */
+        .statistics {
+            width: 80%;
+            border-collapse: collapse;
+            empty-cells: show;
+            margin-bottom: 1em;
+        }
+        .statistics tr:hover {
+            background: #f4f4f4;
+            cursor: pointer;
+        }
+        .statistics th, .statistics td {
+            border: 1px solid #ccc;
+            padding: 0.1em 0.3em;
+        }
+        .statistics th {
+            background-color: #ddd;
+            padding: 0.2em 0.3em;
+        }
+        .statistics td {
+            vertical-align: middle;
+        }
+        .stats-col-stat {
+            width: 4.5em;
+            text-align: center;
+        }
+        .stats-col-elapsed {
+            width: 6em;
+            text-align: center;
+        }
+        .stats-col-graph {
+            width: 9em;
+        }
+        th.stats-col-graph:hover {
+            cursor: default;
+        }
+        .stat-name {
+            float: left;
+        }
+        .stat-name a, .stat-name span {
+            font-weight: bold;
+        }
+        .tag-links {
+            font-size: 0.9em;
+            float: right;
+            margin-top: 0.05em;
+        }
+        .tag-links span {
+            margin-left: 0.2em;
+        }
+        /* Statistics graph */
+        .graph, .empty-graph {
+            border: 1px solid #ccc;
+            width: auto;
+            height: 7px;
+            padding: 0;
+            background: #f33;
+        }
+        .empty-graph {
+            background: #eee;
+        }
+        .pass-bar, .fail-bar {
+            float: left;
+            height: 100%;
+        }
+        .pass-bar {
+            background: #1d4;
+        }
+        /* Tablesorter - adapted from provided Blue Skin */
+        .tablesorter-header {
+            background-image: url(data:image/gif;base64,R0lGODlhCwAJAIAAAH9/fwAAACH5BAEAAAEALAAAAAALAAkAAAIRjAOnBr3cnIr0WUjTrC9e9BQAOw==);
+            background-repeat: no-repeat;
+            background-position: center right;
+            cursor: pointer;
+        }
+        .tablesorter-header:hover {
+            background-color: #ccc;
+        }
+        .tablesorter-headerAsc {
+            background-image: url(data:image/gif;base64,R0lGODlhCwAJAKEAAAAAAH9/fwAAAAAAACH5BAEAAAIALAAAAAALAAkAAAIUlBWnFr3cnIr0WQOyBmvzp13CpxQAOw==);
+            background-color: #ccc !important;
+        }
+        .tablesorter-headerDesc {
+            background-image: url(data:image/gif;base64,R0lGODlhCwAJAKEAAAAAAH9/fwAAAAAAACH5BAEAAAIALAAAAAALAAkAAAIUlAWnBr3cnIr0WROyDmvzp13CpxQAOw==);
+            background-color: #ccc !important;
+        }
+        .sorter-false {
+            background-image: none;
+            cursor: default;
+        }
+        .sorter-false:hover {
+            background-color: #ddd;
+        }
+    </style>
+</head>
+
+<body>
+    <table class="section">
+        <tr class="tr-title">
+            <td class="td-title-main" colspan=2>
+                BUILD {{ build.result }}
+            </td>
+        </tr>
+        <tr>
+            <td>Build URL:</td>
+            <td><a href="{{ build.url }}">{{ build.url }}</a></td>
+        </tr>
+        <tr>
+            <td>Project:</td>
+            <td>{{ build.name }}</td>
+        </tr>
+        <tr>
+            <td>Build Date:</td>
+            <td>{{ build.date }}</td>
+        </tr>
+        <tr>
+            <td>Build Duration:</td>
+            <td>{{ build.duration }}</td>
+        </tr>
+        <!--tr>
+            <td>Cause:</td>
+            <td><% build.causes.each() { cause -> %> ${cause.shortDescription} <%  } %></td>
+        </tr-->
+      </table>
+
+    <br/>
+
+    <div id="statistics-container">
+        <h2>Test Statistics</h2>
+        {% for statistic in statistics %}
+        <br/>
+        <table class="statistics tablesorter tablesorter-default">
+            <thead>
+            <tr class="tablesorter-headerRow">
+                <th class="stats-col-name  tablesorter-header" data-column="0">
+                    <div class="tablesorter-header-inner">{{ statistic.title }}</div>
+                </th>
+                <th class="stats-col-stat  tablesorter-header" data-column="1">
+                    <div class="tablesorter-header-inner">Total</div>
+                </th>
+                <th class="stats-col-stat  tablesorter-header" data-column="2">
+                    <div class="tablesorter-header-inner">Pass</div>
+                </th>
+                <th class="stats-col-stat  tablesorter-header" data-column="3">
+                    <div class="tablesorter-header-inner">Fail</div>
+                </th>
+                <th class="stats-col-elapsed  tablesorter-header" data-column="4">
+                    <div class="tablesorter-header-inner">Elapsed</div>
+                </th>
+                <th class="stats-col-graph sorter-false tablesorter-header" data-column="5">
+                    <div class="tablesorter-header-inner">Pass / Fail</div>
+                </th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for record in statistic.records %}
+            <tr class="row-{{ loop.index0 }}">
+                <td class="stats-col-name">
+                    <div class="stat-name">
+                        <span>{{ record.name }}</span>
+                    </div>
+                </td>
+                <td class="stats-col-stat">{{ record.total }}</td>
+                <td class="stats-col-stat">{{ record.passed }}</td>
+                <td class="stats-col-stat">{{ record.failed }}</td>
+                <td class="stats-col-elapsed">{{ record.duration }}</td>
+                <td class="stats-col-graph">
+                    <div class="graph">
+                        <div class="pass-bar" style="width: {{ record.passed_percentage }}%" title="{{ record.passed_percentage }}%"></div>
+                        <div class="fail-bar" style="width: {{ record.failed_percentage }}%" title="{{ record.failed_percentage }}%"></div>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endfor %}
+    </div>
+
+    <br/>
+
+    <div>
+        <table class="statistics tablesorter tablesorter-default">
+            <thead>
+            <tr class="tablesorter-headerRow">
+                <th class="stats-col-name  tablesorter-header" data-column="0">
+                    <div class="tablesorter-header-inner">Tests</div>
+                </th>
+                <th class="stats-col-elapsed  tablesorter-header" data-column="1">
+                    <div class="tablesorter-header-inner">Elapsed</div>
+                </th>
+                <th class="stats-col-graph sorter-false tablesorter-header" data-column="2">
+                    <div class="tablesorter-header-inner">Status</div>
+                </th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for test in tests %}
+            <tr class="row-{{ loop.index0 }}">
+                <td class="stats-col-name">
+                    <div class="stat-name">
+                        <span>{{ test.name }}</span>
+                    </div>
+                </td>
+                <td class="stats-col-elapsed">{{ test.duration }}</td>
+                <td class="stats-col-graph">
+                    <div class="graph">
+                        {% if test.status == 'PASS' %}
+                        <div class="pass-bar" style="width: 100%" title="100%"></div>
+                        <div class="fail-bar" style="width: 0%" title="0%"></div>
+                        {% else %}
+                        <div class="pass-bar" style="width: 0%" title="0%"></div>
+                        <div class="fail-bar" style="width: 100%" title="100%"></div>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
