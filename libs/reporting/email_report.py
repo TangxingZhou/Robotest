@@ -1,4 +1,4 @@
-import os
+import os, sys
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
@@ -7,37 +7,38 @@ from jinja2 import Environment, FileSystemLoader
 
 class EmailReport(object):
 
-    def __init__(self, host, user, password, receivers='', subject='', port=25):
-        self.__smtp = smtplib.SMTP(host, port)
-        self.__sender = user
-        self.__login_auth = (user, password)
-        self.__receivers = receivers.replace(' ', '')
-        self.__header = Header(subject, charset='utf-8')
-        self.__content = ''
+    def __init__(self, host, user, password, receivers='', port=25):
+        self.__ready = False
+        if None not in (host, user, password, receivers):
+            self.__sender = user
+            try:
+                self.__receivers = receivers.replace(' ', '')
+                self.__smtp = smtplib.SMTP(host, port)
+                self.__smtp.login(user, password)
+                self.__ready = True
+            except Exception as e:
+                sys.stderr.write('{}\n[SMTP ERROR]: Fail to log in to {}@{}.\n'.format(e, user, host))
 
-    def login(self):
-        self.__smtp.login(*self.__login_auth)
-
-    def send(self, mime_type='html', content=''):
-        if content:
+    def send(self, mime_type='html', subject=None, content=''):
+        if self.__ready:
             message = MIMEText(content, _subtype=mime_type, _charset='utf-8')
-        else:
-            message = MIMEText(self.__content, _subtype=mime_type, _charset='utf-8')
-        message['Subject'] = self.__header
-        message['From'] = self.__sender
-        message['To'] = self.__receivers
-        self.__smtp.sendmail(self.__sender, self.__receivers.split(','), message.as_string())
+            message['Subject'] = Header(subject, charset='utf-8')
+            message['From'] = self.__sender
+            message['To'] = self.__receivers
+            self.__smtp.sendmail(self.__sender, self.__receivers.split(','), message.as_string())
 
-    def render(self, template, out='', **kwargs):
-        if os.path.isfile(template):
-            env = Environment(loader=FileSystemLoader(os.path.dirname(template)))
+    @classmethod
+    def render(cls, email_template_file, out_email_file='', **kwargs):
+        if os.path.isfile(email_template_file):
+            env = Environment(loader=FileSystemLoader(os.path.dirname(email_template_file)))
         else:
-            raise FileNotFoundError('Template file \'{}\' for email is not found.'.format(template))
-        email_template = env.get_template(os.path.basename(template))
-        self.__content = email_template.render(**kwargs)
-        if out:
-            with open(out, 'w') as f:
-                f.write(self.__content)
+            raise FileNotFoundError('Template file \'{}\' for email is not found.'.format(email_template_file))
+        email_template_file = env.get_template(os.path.basename(email_template_file))
+        content = email_template_file.render(**kwargs)
+        if out_email_file:
+            with open(out_email_file, 'w') as f:
+                f.write(content)
+        return content
 
     def quit(self):
         return self.__smtp.quit()

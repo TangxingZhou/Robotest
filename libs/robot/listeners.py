@@ -5,6 +5,7 @@ __author__ = 'Tangxing Zhou'
 
 import os, sys
 from datetime import datetime, timedelta
+from pytz import timezone
 from robot.libraries.BuiltIn import BuiltIn
 from libs.databases.Sqlite import Sqlite
 from libs.reporting import *
@@ -31,6 +32,9 @@ class Listener2(object):
         self.__tc_id = ''
         self.__start_time = datetime.now().strftime('%Y-%m-%d %H-%M-%S')
         self.__report_libs = []
+        self.__build_locally = 'Y'
+        self.__local_host = ''
+        self.__build = {'id': None, 'url': None, 'project': None, 'name': None, 'result': None, 'duration': None, 'date': None}
 
     def start_suite(self, name, attrs):
         """
@@ -85,7 +89,11 @@ class Listener2(object):
                                                                   ('HOST', 'USER', 'PSW', 'DB', 'PORT'))))
             self.__email_info = tuple(map(BuiltIn().get_variable_value,
                                           map(lambda x: '${' + 'EMAIL_' + x + '}',
-                                              ('SERVER', 'SENDER_ACCOUNT', 'SENDER_PSW', 'RECEIVERS', 'SUBJECT'))))
+                                              ('SERVER', 'SENDER_ACCOUNT', 'SENDER_PSW', 'RECEIVERS'))))
+            self.__build_locally = BuiltIn().get_variable_value('${BUILD_LOCALLY}', 'Y')
+            self.__local_host = BuiltIn().get_variable_value('${LOCAL_HOST}', '')
+            for k in self.__build.keys():
+                self.__build[k] = BuiltIn().get_variable_value('${BUILD_' + k.upper() + '}')
             if self.__report_to_db == 'Y':
                 self.__db = None
                 if self.__db is not None:
@@ -286,22 +294,30 @@ class Listener2(object):
                     for test_keyword in _robot_result_parser.get_keywords_of_test(self.__tr_id, self.__tc_id):
                         # TODO:
                         pass
-                test_run_status = \
-                _sqlite_writer.fetch_records(TestRunStatus, test_run_id=self.__tr_id, name='All Tests')[0]
+                test_run_status = _sqlite_writer.fetch_records(TestRunStatus,
+                                                               test_run_id=self.__tr_id, name='All Tests')[0]
                 test_run = _sqlite_writer.fetch_records(TestRuns, id=self.__tr_id)[0]
                 if test_run_status.passed == 1:
+                    test_run_result = 'SUCCESS'
+                else:
+                    test_run_result = 'FAILURE'
+                if self.__build_locally == 'Y':
                     build = dict(
-                        name=test_run_status.name,
-                        date=datetime.strptime(test_run.finished_at, '%Y-%m-%d %H:%M:%S.%f').strftime('%Y-%m-%d'),
-                        duration=test_run_status.elapsed, result='SUCCESS'
+                        id=self.__tr_id,
+                        host=self.__local_host,
+                        project=self.__project.upper(),
+                        name=self.__sub_project if self.__sub_project else test_run_status.name,
+                        url=test_run.source_file,
+                        date=datetime.strptime(test_run.started_at, '%Y-%m-%d %H:%M:%S.%f').
+                            replace(tzinfo=timezone('Asia/Shanghai')).strftime('%a, %d %b %Y %H:%M:%S %z'),
+                        duration=format_duration(test_run_status.elapsed),
+                        result=test_run_result
                     )
                 else:
                     build = dict(
-                        name=test_run_status.name,
-                        date=datetime.strptime(test_run.finished_at, '%Y-%m-%d %H:%M:%S.%f').strftime('%Y-%m-%d'),
-                        duration=test_run_status.elapsed, result='FAILURE'
+                        host=self.__local_host,
+                        **self.__build
                     )
-
                 all_statistics = [
                     get_statistics(_sqlite_writer.fetch_records(TestStatus, test_run_id=self.__tr_id)) +
                     {'name': status.name, 'duration': format_duration(status.elapsed)}
@@ -316,8 +332,11 @@ class Listener2(object):
                     ) +
                     {
                         'name': '.'.join(
-                            [getattr(_sqlite_writer.fetch_records(Suites, id=tests[1].suite_id)[0], k) for k in
-                             ('parent_suite', 'name')]),
+                            [
+                                getattr(_sqlite_writer.fetch_records(Suites, id=tests[1].suite_id)[0], k)
+                                for k in ('parent_suite', 'name')
+                            ]
+                        ),
                         'duration': format_duration(tests[1].elapsed)
                     }
                     for tests in
@@ -351,7 +370,7 @@ class Listener2(object):
                     for status in _sqlite_writer.fetch_records(TestStatus, test_run_id=self.__tr_id)
                 ]
             except Exception as e:
-                sys.stderr.write('[Sqlite ERROR]: {}\n\n'.format(e))
+                sys.stderr.write('[Sqlite ERROR]: {}\n'.format(e))
                 exit(1)
             finally:
                 _sqlite_writer.close()
@@ -359,10 +378,9 @@ class Listener2(object):
             if self.__send_email_report == 'Y':
                 email_client = EmailReport(*self.__email_info)
                 try:
-                    email_client.login()
-                    email_client.render(
-                        template='resources/reporting/templates/email_report.html',
-                        out=os.path.join(self.__exec_dir, 'out', self.__project, 'email_report.html'),
+                    email_content = EmailReport.render(
+                        email_template_file='resources/reporting/templates/email_report.html',
+                        out_email_file=os.path.join(self.__exec_dir, 'out', self.__project, 'email_report.html'),
                         build=build,
                         statistics=(
                             {'title': 'Total Statistics', 'records': all_statistics},
@@ -371,9 +389,12 @@ class Listener2(object):
                         ),
                         tests=tests_statistics
                     )
-                    email_client.send()
+                    email_client.send(
+                        subject='[{project}] {name} - #{id} - {result}'.format(**build),
+                        content=email_content
+                    )
                 except Exception as e:
-                    sys.stderr.write('[Email ERROR]: {}\n\n'.format(e))
+                    sys.stderr.write('[Email ERROR]: {}\n'.format(e))
                     exit(1)
                 finally:
                     email_client.quit()

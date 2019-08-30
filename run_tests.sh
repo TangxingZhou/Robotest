@@ -15,6 +15,6 @@ elif [ "$1" = "--testdoc" ]; then
     shift
     python3 -m robot.testdoc $*
 else
-    python3 -m run_robot $*
+    python3 -m run_robot --variable LOCAL_HOST:`hostname` $*
 fi
 # python3 -m run_robot --argumentfile runners/Demo/Internal_Chrome.txt

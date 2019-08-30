@@ -45,7 +45,7 @@
           padding-left: 5px;
         }
         .tr-title {
-          background-color: {% if build.result == 'SUCCESS' %}#27AE60{% elif build.result == 'FAILURE' %}#E74C3C{% else %}#f4e242{% endif %};
+          background-color: {% if build.result == 'SUCCESS' %}#27AE60{% elif build.result == 'FAILURE' %}#E74C3C{% elif build.result == 'UNSTABLE' %}#F4E242{% else %}${color}{% endif %};
         }
         .test {
           padding-left: 20px;
@@ -283,24 +283,48 @@
     <table class="section">
         <tr class="tr-title">
             <td class="td-title-main" colspan=2>
+                {% if build.result %}
                 BUILD {{ build.result }}
+                {% else %}
+                BUILD ${result}
+                {% endif %}
             </td>
         </tr>
         <tr>
+            <td>Build Host:</td>
+            <td>{{ build.host }}</td>
+        </tr>
+        <tr>
             <td>Build URL:</td>
+            {% if build.url %}
             <td><a href="{{ build.url }}">{{ build.url }}</a></td>
+            {% else %}
+            <td><a href="${url}">${url}</a></td>
+            {% endif %}
         </tr>
         <tr>
             <td>Project:</td>
+            {% if build.name %}
             <td>{{ build.name }}</td>
+            {% else %}
+            <td>${name}</td>
+            {% endif %}
         </tr>
         <tr>
             <td>Build Date:</td>
+            {% if build.date %}
             <td>{{ build.date }}</td>
+            {% else %}
+            <td>${date}</td>
+            {% endif %}
         </tr>
         <tr>
             <td>Build Duration:</td>
+            {% if build.duration %}
             <td>{{ build.duration }}</td>
+            {% else %}
+            <td>${duration}</td>
+            {% endif %}
         </tr>
         <!--tr>
             <td>Cause:</td>
