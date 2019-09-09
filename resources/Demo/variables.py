@@ -17,3 +17,19 @@ EMAIL_SENDER_ACCOUNT = 'xxx@126.com'
 EMAIL_SENDER_PSW = 'xxxxxx'
 EMAIL_RECEIVERS = 'xxx@126.com'
 EMAIL_TEMPLATE = 'resources/reporting/templates/email_report.html'
+
+# Timeout config
+TIME_OUT = 300
+TIME_INTERVAL = 5
+
+
+# def get_variables():
+#     return {
+#         'EMAIL_SERVER': EMAIL_SERVER,
+#         'EMAIL_SENDER_ACCOUNT': EMAIL_SENDER_ACCOUNT,
+#         'EMAIL_SENDER_PSW': EMAIL_SENDER_PSW,
+#         'EMAIL_RECEIVERS': EMAIL_RECEIVERS,
+#         'EMAIL_TEMPLATE': EMAIL_TEMPLATE,
+#         'TIME_OUT': TIME_OUT,
+#         'TIME_INTERVAL': TIME_INTERVAL
+#     }

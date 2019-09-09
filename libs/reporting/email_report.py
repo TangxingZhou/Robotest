@@ -17,7 +17,11 @@ class EmailReport(object):
                 self.__smtp.login(user, password)
                 self.__ready = True
             except Exception as e:
-                sys.stderr.write('{}\n[SMTP ERROR]: Fail to log in to {}@{}.\n'.format(e, user, host))
+                sys.stderr.write('[SMTP ERROR]: Fail to log in to {}@{}.\n{}\n'.format(user, host, e))
+
+    @property
+    def ready(self):
+        return self.__ready
 
     def send(self, mime_type='html', subject=None, content=''):
         if self.__ready:
@@ -28,15 +32,15 @@ class EmailReport(object):
             self.__smtp.sendmail(self.__sender, self.__receivers.split(','), message.as_string())
 
     @classmethod
-    def render(cls, email_template_file, out_email_file='', **kwargs):
+    def render(cls, email_template_file, email_file='', **kwargs):
         if os.path.isfile(email_template_file):
             env = Environment(loader=FileSystemLoader(os.path.dirname(email_template_file)))
         else:
             raise FileNotFoundError('Template file \'{}\' for email is not found.'.format(email_template_file))
         email_template_file = env.get_template(os.path.basename(email_template_file))
         content = email_template_file.render(**kwargs)
-        if out_email_file:
-            with open(out_email_file, 'w') as f:
+        if email_file:
+            with open(email_file, 'w') as f:
                 f.write(content)
         return content
 
@@ -48,7 +52,8 @@ TestRuns = {
     '__table__': 'test_runs',
     'id': int,
     'started_at': str,
-    'finished_at': str
+    'finished_at': str,
+    'source_file': str
 }
 
 TestRunStatus = {
@@ -88,6 +93,7 @@ Tests = {
 
 TestStatus = {
     '__table__': 'test_status',
+    'test_run_id': int,
     'test_id': int,
     'elapsed': int,
     'status': str

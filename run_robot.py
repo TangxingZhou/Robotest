@@ -52,7 +52,7 @@ def main():
                     robot_output_dir = os.path.join('out', paths[0])
                     default_arguments_file = find_default_arguments_file(os.path.join('tests/', paths[0]))
             else:
-                robot_output_dir = os.path.join('out', paths[0], paths[1])
+                robot_output_dir = os.path.join('out', paths[0])
                 default_arguments_file = find_default_arguments_file(os.path.join('tests/', paths[0], paths[1]))
         else:
             sys.stdout.write('[Robot ERROR]: The start path is not specified or doesn\'t exists.\n')

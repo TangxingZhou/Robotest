@@ -32,9 +32,8 @@ class Listener2(object):
         self.__tc_id = ''
         self.__start_time = datetime.now().strftime('%Y-%m-%d %H-%M-%S')
         self.__report_libs = []
-        self.__build_locally = 'Y'
         self.__local_host = ''
-        self.__build = {'id': None, 'url': None, 'project': None, 'name': None, 'result': None, 'duration': None, 'date': None}
+        self.__build = {'id': None, 'url': None, 'name': None, 'result': None, 'duration': None, 'date': None}
 
     def start_suite(self, name, attrs):
         """
@@ -90,7 +89,6 @@ class Listener2(object):
             self.__email_info = tuple(map(BuiltIn().get_variable_value,
                                           map(lambda x: '${' + 'EMAIL_' + x + '}',
                                               ('SERVER', 'SENDER_ACCOUNT', 'SENDER_PSW', 'RECEIVERS'))))
-            self.__build_locally = BuiltIn().get_variable_value('${BUILD_LOCALLY}', 'Y')
             self.__local_host = BuiltIn().get_variable_value('${LOCAL_HOST}', '')
             for k in self.__build.keys():
                 self.__build[k] = BuiltIn().get_variable_value('${BUILD_' + k.upper() + '}')
@@ -247,7 +245,7 @@ class Listener2(object):
         """
         if self.__report_to_db == 'Y':
             verbose_stream = sys.stdout
-            output_xml_path = os.path.join(self.__exec_dir, 'out', self.__project, self.__sub_project, 'output.xml')
+            output_xml_path = os.path.join(self.__exec_dir, 'out', self.__project, 'output.xml')
             _sqlite = Sqlite(os.path.join(self.__exec_dir, 'out', self.__project, 'robot_results.db'), verbose_stream)
             _sqlite_writer = DatabaseWriter(_sqlite.connection, verbose_stream)
             _robot_result_parser = RobotResultsParser(_sqlite_writer, verbose_stream)
@@ -284,7 +282,7 @@ class Listener2(object):
                     failed_percentage=100 - round(statistics_passed / statistics_total * 100)
                 )
 
-            build, all_statistics, tags_statistics, suites_statistics, tests_statistics = {}, [], [], [], []
+            robot_build, all_statistics, tags_statistics, suites_statistics, tests_statistics = {}, [], [], [], []
             try:
                 self.__tr_id = _robot_result_parser.xml_to_db(output_xml_path)
                 _sqlite_writer.commit()
@@ -297,27 +295,17 @@ class Listener2(object):
                 test_run_status = _sqlite_writer.fetch_records(TestRunStatus,
                                                                test_run_id=self.__tr_id, name='All Tests')[0]
                 test_run = _sqlite_writer.fetch_records(TestRuns, id=self.__tr_id)[0]
-                if test_run_status.passed == 1:
-                    test_run_result = 'SUCCESS'
-                else:
-                    test_run_result = 'FAILURE'
-                if self.__build_locally == 'Y':
-                    build = dict(
-                        id=self.__tr_id,
-                        host=self.__local_host,
-                        project=self.__project.upper(),
-                        name=self.__sub_project if self.__sub_project else test_run_status.name,
-                        url=test_run.source_file,
-                        date=datetime.strptime(test_run.started_at, '%Y-%m-%d %H:%M:%S.%f').
-                            replace(tzinfo=timezone('Asia/Shanghai')).strftime('%a, %d %b %Y %H:%M:%S %z'),
-                        duration=format_duration(test_run_status.elapsed),
-                        result=test_run_result
-                    )
-                else:
-                    build = dict(
-                        host=self.__local_host,
-                        **self.__build
-                    )
+                robot_build = dict(
+                    host=self.__local_host,
+                    project=self.__project.upper(),
+                    id=self.__tr_id,
+                    name=self.__sub_project if self.__sub_project else test_run_status.name,
+                    url=test_run.source_file,
+                    date=datetime.strptime(test_run.started_at, '%Y-%m-%d %H:%M:%S.%f').
+                        replace(tzinfo=timezone('Asia/Shanghai')).strftime('%a, %d %b %Y %H:%M:%S %z'),
+                    duration=format_duration(test_run_status.elapsed),
+                    result='SUCCESS' if test_run_status.passed == 1 else 'FAILURE'
+                )
                 all_statistics = [
                     get_statistics(_sqlite_writer.fetch_records(TestStatus, test_run_id=self.__tr_id)) +
                     {'name': status.name, 'duration': format_duration(status.elapsed)}
@@ -377,6 +365,14 @@ class Listener2(object):
                 # self.__db.close()
             if self.__send_email_report == 'Y':
                 email_client = EmailReport(*self.__email_info)
+                if email_client.ready:
+                    build = robot_build
+                else:
+                    build = dict(
+                        host=self.__local_host,
+                        project=self.__project.upper(),
+                        **self.__build
+                    )
                 try:
                     email_content = EmailReport.render(
                         email_template_file='resources/reporting/templates/email_report.html',
