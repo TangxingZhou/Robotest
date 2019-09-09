@@ -8,17 +8,28 @@ MAX_ROBOT_PROCESSES = 5
 
 def args_parser(name, description=None, usage='usage: %(prog)s [options] args'):
     parser = argparse.ArgumentParser(prog=name, description=description, usage=usage)
-    parser.add_argument( '--processes', action='store', required=False, type=int, default=1, choices=range(1, MAX_ROBOT_PROCESSES + 1), dest='robot_processes', help='Run robot in parallel.')
-    parser.add_argument('--verbose', action='store_true', required=False, default=False, dest='verbose', help='Show the verbose information, off is by default.')
-    parser.add_argument('--default_arguments', action='store_true', required=False, default=False, dest='default_arguments', help='Whether to Use the default arguments, yes is by default.')
+    parser.add_argument('--processes', action='store', required=False, type=int, default=1,
+                        choices=range(1, MAX_ROBOT_PROCESSES + 1), dest='robot_processes',
+                        help='Run robot in parallel.')
+    parser.add_argument('--verbose', action='store_true', required=False, default=False, dest='verbose',
+                        help='Show the verbose information, off is by default.')
     return parser
 
 
 def main():
     parser = args_parser(
         sys.argv[0].rpartition('/')[2],
-        description='Run robotframework.\nAuthor: Tangxing Zhou\nE-mail: zhoutangxing@126.com')
-    robot_arguments = ['--pythonpath', '.']
+        description='Run tests with robot.\n'
+                    'Author: Tangxing Zhou\n'
+                    'Company: Transwarp\n'
+                    'E-mail: tangxing.zhou@transwarp.io'
+    )
+    robot_arguments = [
+        '--pythonpath', '.',
+        '--listener', 'libraries.robot.listeners.Listener2',
+        '--exclude', 'Skip',
+        '--debugfile', 'debug.log'
+    ]
     if len(sys.argv) is 1:
         parser.print_help()
         sys.exit(1)
@@ -33,33 +44,18 @@ def main():
             else:
                 sys.stdout.write('[Robot ERROR]: The start path {} is invalid.\n'.format(sys.argv[-1]))
                 sys.exit(1)
-
-            def find_default_arguments_file(project_path):
-                if project_path == '':
-                    return
-                else:
-                    if os.path.exists(os.path.join(project_path, 'arguments.txt')):
-                        return os.path.join(project_path, 'arguments.txt')
-                    else:
-                        return find_default_arguments_file(os.path.dirname(project_path))
-
             paths = os.path.relpath(robot_path, 'tests').split(os.path.sep)
             if len(paths) == 1:
                 if paths[0].startswith('.'):
                     robot_output_dir = 'out/'
-                    default_arguments_file = find_default_arguments_file('tests/')
                 else:
                     robot_output_dir = os.path.join('out', paths[0])
-                    default_arguments_file = find_default_arguments_file(os.path.join('tests/', paths[0]))
             else:
                 robot_output_dir = os.path.join('out', paths[0])
-                default_arguments_file = find_default_arguments_file(os.path.join('tests/', paths[0], paths[1]))
         else:
             sys.stdout.write('[Robot ERROR]: The start path is not specified or doesn\'t exists.\n')
             sys.exit(1)
     args, unknown = parser.parse_known_args()
-    if args.default_arguments and default_arguments_file:
-        robot_arguments.extend(['--argumentfile', default_arguments_file])
     robot_arguments.extend(['--outputdir', robot_output_dir])
     robot_arguments.extend(unknown)
     if args.robot_processes == 1:

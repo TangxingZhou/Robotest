@@ -53,32 +53,12 @@ class Listener2(object):
         :param attrs: A dictionary / map contains the attributes for current suite.
         :return:
         """
-        self.__exec_dir = BuiltIn().get_variable_value('${EXECDIR}')
-        path_separator = BuiltIn().get_variable_value('${/}')
-        env_name = BuiltIn().get_variable_value('${ENV}', 'QA').upper()
-        BuiltIn().set_suite_variable('${ENV}', env_name)
-        int_or_ext = BuiltIn().get_variable_value('${IntExt}', 'Internal')
-        browser = BuiltIn().get_variable_value('${Browser}', 'Chrome')
-        if os.path.isfile(attrs['source']):
-            paths = os.path.relpath(os.path.dirname(attrs['source']),
-                                    os.path.join(self.__exec_dir, 'tests')).split(path_separator)
-        else:
-            paths = os.path.relpath(attrs['source'], os.path.join(self.__exec_dir, 'tests')).split(path_separator)
-        if len(paths) == 1:
-            if paths[0].startswith('.'):
-                self.__project, self.__sub_project = '', ''
-            else:
-                self.__project, self.__sub_project = paths[0], ''
-        else:
-            self.__project, self.__sub_project = paths
-        BuiltIn().set_suite_variable('${Project}', self.__project)
-        BuiltIn().set_suite_variable('${Sub Project}', self.__sub_project)
-        keywords_dir = os.path.join('resources', self.__project, self.__sub_project, 'keywords')
-        for root, dirs, files in os.walk(keywords_dir):
-            for resource_file in files:
-                BuiltIn().import_resource(os.path.join(root, resource_file).replace('\\', '/'))
-                self.__report_libs.append(resource_file.split('.')[0])
         if attrs['id'] == 's1':
+            self.__exec_dir = BuiltIn().get_variable_value('${EXECDIR}')
+            env_name = BuiltIn().get_variable_value('${ENV}', 'QA').upper()
+            BuiltIn().set_suite_variable('${ENV}', env_name)
+            int_or_ext = BuiltIn().get_variable_value('${IntExt}', 'Internal')
+            browser = BuiltIn().get_variable_value('${Browser}', 'Chrome')
             self.__run_type = BuiltIn().get_variable_value('${RunType}', 'Smoke')
             self.__report_to_db = BuiltIn().get_variable_value('${ReportToDB}', 'N')
             self.__send_email_report = BuiltIn().get_variable_value('${SendEmail}', 'N')
@@ -92,6 +72,11 @@ class Listener2(object):
             self.__local_host = BuiltIn().get_variable_value('${LOCAL_HOST}', '')
             for k in self.__build.keys():
                 self.__build[k] = BuiltIn().get_variable_value('${BUILD_' + k.upper() + '}')
+            keywords_dir = os.path.join('resources', self.__project, self.__sub_project, 'keywords')
+            for root, dirs, files in os.walk(keywords_dir):
+                for resource_file in files:
+                    BuiltIn().import_resource(os.path.join(root, resource_file).replace('\\', '/'))
+                    self.__report_libs.append(resource_file.split('.')[0])
             if self.__report_to_db == 'Y':
                 self.__db = None
                 if self.__db is not None:
