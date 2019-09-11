@@ -7,3 +7,5 @@ robotremoteserver
 pymssql
 mysqlclient
 requests
+urllib3
+six

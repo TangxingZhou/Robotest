@@ -2,7 +2,7 @@ import re
 from json import loads, JSONDecodeError
 import functools
 from six import iteritems
-from kubernetes.client.rest import ApiException
+from .rest import ApiException
 
 
 def request(url, method, *request_params):
