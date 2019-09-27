@@ -24,7 +24,7 @@ else
     elif [ -f ${@:$#} ]; then
         unset paths[`expr ${#paths[*]} - 1`]
     else
-        echo "[Robot ERROR]: The start path is not specified or doesn't exists."
+        echo "[RUN ERROR]: The start path is not specified or doesn't exists."
         exit 1
     fi
     if [ -z ${paths[1]} ]; then
@@ -37,6 +37,7 @@ else
             sub_project=${paths[2]}
         fi
         python3 -m run_robot \
+        --nostatusrc \
         --variable LOCAL_HOST:`hostname` \
         --variable Project:$project \
         --variable Sub_Project:$sub_project \

@@ -6,6 +6,8 @@ __author__ = 'Tangxing Zhou'
 import os, sys
 from datetime import datetime, timedelta
 from pytz import timezone
+from robot import rebot
+from robot.api import ExecutionResult
 from robot.libraries.BuiltIn import BuiltIn
 from libs.databases.Sqlite import Sqlite
 from libs.reporting import *
@@ -22,6 +24,7 @@ class Listener2(object):
         self.__email_info = ()
         self.__run_type= 'Smoke'
         self.__report_to_db = 'N'
+        self.__merge_results = 'N'
         self.__send_email_report = 'N'
         self.__exec_dir = os.path.abspath(__file__)
         self.__project = ''
@@ -61,6 +64,7 @@ class Listener2(object):
             browser = BuiltIn().get_variable_value('${Browser}', 'Chrome')
             self.__run_type = BuiltIn().get_variable_value('${RunType}', 'Smoke')
             self.__report_to_db = BuiltIn().get_variable_value('${ReportToDB}', 'N')
+            self.__merge_results = BuiltIn().get_variable_value('${MergeResults}', 'N')
             self.__send_email_report = BuiltIn().get_variable_value('${SendEmail}', 'N')
             self.__start_time = datetime.strptime(attrs['starttime'], '%Y%m%d %H:%M:%S.%f')
             BuiltIn().import_variables('${EXECDIR}/resources/${Project}/variables.py')
@@ -230,6 +234,37 @@ class Listener2(object):
         """
         if self.__report_to_db == 'Y':
             verbose_stream = sys.stdout
+            verbose_stream.write('{0:*^78}\n'.format('Merger Results For ' + self.__project))
+            if self.__merge_results == 'Y':
+                project_output = [
+                    os.path.join(root, file)
+                    for root, dirs, files in os.walk(os.path.join(self.__exec_dir, 'out', self.__project))
+                    for file in files
+                    if file == 'output.xml' and root != os.path.join(self.__exec_dir, 'out', self.__project)
+                ]
+                execution_results = [ExecutionResult(xml_file) for xml_file in project_output]
+                execution_results_starttime = [
+                    datetime.strptime(execution_result.suite.starttime, '%Y%m%d %H:%M:%S.%f')
+                    for execution_result in execution_results
+                ]
+                execution_results_endtime = [
+                    datetime.strptime(execution_result.suite.endtime, '%Y%m%d %H:%M:%S.%f')
+                    for execution_result in execution_results
+                ]
+                rebot(
+                    *project_output, name=self.__project, log='log', output='output', stdout=sys.stdout,
+                    outputdir=os.path.join(self.__exec_dir, 'out', self.__project),
+                    starttime=min(execution_results_starttime).strftime('%Y%m%d %H:%M:%S.%f')[:-3],
+                    endtime=max(execution_results_endtime).strftime('%Y%m%d %H:%M:%S.%f')[:-3]
+                )
+            else:
+                xml_file = os.path.join(self.__exec_dir, 'out', self.__project, self.__sub_project, 'output.xml')
+                rebot(
+                    xml_file, output='output', stdout=sys.stdout,
+                    outputdir=os.path.join(self.__exec_dir, 'out', self.__project),
+                    starttime=ExecutionResult(xml_file).suite.starttime,
+                    endtime=ExecutionResult(xml_file).suite.endtime
+                )
             output_xml_path = os.path.join(self.__exec_dir, 'out', self.__project, 'output.xml')
             _sqlite = Sqlite(os.path.join(self.__exec_dir, 'out', self.__project, 'robot_results.db'), verbose_stream)
             _sqlite_writer = DatabaseWriter(_sqlite.connection, verbose_stream)
