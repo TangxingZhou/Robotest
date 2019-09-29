@@ -28,7 +28,8 @@ else
         exit 1
     fi
     if [ -z ${paths[1]} ]; then
-        python3 -m run_robot $*
+        echo "[RUN ERROR]: Tests must belong to a certain project."
+        exit 1
     else
         project=${paths[1]}
         if [ -z ${paths[2]} ]; then

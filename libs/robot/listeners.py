@@ -234,13 +234,13 @@ class Listener2(object):
         """
         if self.__report_to_db == 'Y':
             verbose_stream = sys.stdout
-            verbose_stream.write('{0:*^78}\n'.format('Merger Results For ' + self.__project))
+            verbose_stream.write('{0:*^78}\n'.format('Merge Results For ' + self.__project))
             if self.__merge_results == 'Y':
                 project_output = [
                     os.path.join(root, file)
                     for root, dirs, files in os.walk(os.path.join(self.__exec_dir, 'out', self.__project))
                     for file in files
-                    if file == 'output.xml' and root != os.path.join(self.__exec_dir, 'out', self.__project)
+                    if file == 'output.xml'
                 ]
                 execution_results = [ExecutionResult(xml_file) for xml_file in project_output]
                 execution_results_starttime = [
@@ -253,7 +253,7 @@ class Listener2(object):
                 ]
                 rebot(
                     *project_output, name=self.__project, log='log', output='output', stdout=sys.stdout,
-                    outputdir=os.path.join(self.__exec_dir, 'out', self.__project),
+                    outputdir=os.path.join(self.__exec_dir, 'out'),
                     starttime=min(execution_results_starttime).strftime('%Y%m%d %H:%M:%S.%f')[:-3],
                     endtime=max(execution_results_endtime).strftime('%Y%m%d %H:%M:%S.%f')[:-3]
                 )
@@ -261,11 +261,11 @@ class Listener2(object):
                 xml_file = os.path.join(self.__exec_dir, 'out', self.__project, self.__sub_project, 'output.xml')
                 rebot(
                     xml_file, output='output', stdout=sys.stdout,
-                    outputdir=os.path.join(self.__exec_dir, 'out', self.__project),
+                    outputdir=os.path.join(self.__exec_dir, 'out'),
                     starttime=ExecutionResult(xml_file).suite.starttime,
                     endtime=ExecutionResult(xml_file).suite.endtime
                 )
-            output_xml_path = os.path.join(self.__exec_dir, 'out', self.__project, 'output.xml')
+            output_xml_path = os.path.join(self.__exec_dir, 'out', 'output.xml')
             _sqlite = Sqlite(os.path.join(self.__exec_dir, 'out', self.__project, 'robot_results.db'), verbose_stream)
             _sqlite_writer = DatabaseWriter(_sqlite.connection, verbose_stream)
             _robot_result_parser = RobotResultsParser(_sqlite_writer, verbose_stream)
