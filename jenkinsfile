@@ -158,14 +158,12 @@ EOF
                 // Run tests
                 sh '''
                     cd robot
-                    cluster_main_node_label=${Cluster_Main_Node_Label#*_}
-                    cluster_main_node_ip=${cluster_main_node_label//_/.}
-                    ./run_tests.sh --cluster $cluster_main_node_ip --default_arguments --suite 1_9_3* tests/TOS/release
+                    ./run_tests.sh --cluster $HOSTIP --variable SendEmail:$Send_Email --variable MergeResults:Y tests/TOS/smoke
                 '''
                 // Set RobotPublisher
                 step([  $class              : 'RobotPublisher',
                         disableArchiveOutput: false,
-                        outputPath          : 'robot/out/TOS',
+                        outputPath          : 'robot/out',
                         reportFileName      : 'report.html',
                         outputFileName      : 'output.xml',
                         logFileName         : 'log.html',
