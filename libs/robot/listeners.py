@@ -240,7 +240,7 @@ class Listener2(object):
                     os.path.join(root, file)
                     for root, dirs, files in os.walk(os.path.join(self.__exec_dir, 'out', self.__project))
                     for file in files
-                    if file == 'output.xml'
+                    if file in ('output.xml', 'rerun.xml') and root != os.path.join(self.__exec_dir, 'out', self.__project)
                 ]
                 execution_results = [ExecutionResult(xml_file) for xml_file in project_output]
                 execution_results_starttime = [

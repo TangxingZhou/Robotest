@@ -11,6 +11,8 @@ def args_parser(name, description=None, usage='usage: %(prog)s [options] args'):
     parser.add_argument('--processes', action='store', required=False, type=int, default=1,
                         choices=range(1, MAX_ROBOT_PROCESSES + 1), dest='robot_processes',
                         help='Run robot in parallel.')
+    parser.add_argument('--rerun', action='store_true', required=False, default=False, dest='rerun',
+                        help='Rerun the tests fail, it\'s false by default.')
     parser.add_argument('--verbose', action='store_true', required=False, default=False, dest='verbose',
                         help='Show the verbose information, off is by default.')
     return parser
@@ -59,7 +61,18 @@ def main():
     robot_arguments.extend(['--outputdir', robot_output_dir])
     robot_arguments.extend(unknown)
     if args.robot_processes == 1:
-        run_cli(robot_arguments)
+        origin_rc = run_cli(robot_arguments, exit=False)
+        if args.rerun is True and origin_rc != 0:
+            rerun_robot_options = [
+                '--nostatusrc',
+                '--rerunfailed', os.path.join(robot_output_dir, 'output.xml'),
+                '--output', 'rerun',
+                '--log', 'rerun',
+                '--report', 'NONE'
+            ]
+            if '--debugfile' in robot_arguments:
+                robot_arguments[robot_arguments.index('--debugfile') + 1] = 'rerun.log'
+            run_cli(rerun_robot_options + robot_arguments)
     else:
         pabot_options = ['--processes', '{}'.format(args.robot_processes)]
         if args.verbose:

@@ -2,6 +2,8 @@
 
 set -e
 
+workspace=$(cd `dirname $0`; pwd)
+PYTHONPATH=$workspace
 selenium_server_starter_dir=resources/web_drivers/selenium_server
 
 if [ "$1" = "--init" ]; then
