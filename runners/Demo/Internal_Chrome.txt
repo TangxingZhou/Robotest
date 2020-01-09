@@ -20,9 +20,9 @@
 #--variable        BuildResultsTab:buildResultRobot
 #--include         Demo
 --exclude         Ignore
---suite           Demo
+#--suite           Demo
 #--test            Demo
 #--name            "Demo Test"
-outputdir         out\project\subproject
+--outputdir       out/Demo
 --debugfile       debug.log
-tests\project\subproject
+tests/Demo

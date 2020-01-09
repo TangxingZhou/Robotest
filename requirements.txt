@@ -4,8 +4,15 @@
 robotframework
 robotframework-seleniumlibrary
 robotremoteserver
+robotframework-requests
+robotframework-sshlibrary
 pymssql
 mysqlclient
 requests
 urllib3
 six
+kubernetes
+jsonpath-ng
+jinja2
+pytz
+locustio

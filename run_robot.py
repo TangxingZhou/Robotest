@@ -32,7 +32,7 @@ def main():
         '--exclude', 'Skip',
         '--debugfile', 'debug.log'
     ]
-    if len(sys.argv) is 1:
+    if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
     else:
@@ -73,6 +73,8 @@ def main():
             if '--debugfile' in robot_arguments:
                 robot_arguments[robot_arguments.index('--debugfile') + 1] = 'rerun.log'
             run_cli(rerun_robot_options + robot_arguments)
+        else:
+            sys.exit(origin_rc)
     else:
         pabot_options = ['--processes', '{}'.format(args.robot_processes)]
         if args.verbose:
