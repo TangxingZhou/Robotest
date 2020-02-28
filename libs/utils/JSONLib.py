@@ -109,7 +109,7 @@ class JSONLib(object):
         :param value: value for the target object
         :return: updated json_object
         Examples:
-        | ${json_object}=  |  Set Value To JSON | ${json} |  $.title  |  JSON |
+        | ${json_object}= | Set Value To JSON | ${json} | $.title | JSON |
         """
         if isinstance(json_path, JSONPath):
             json_path_ = json_path
@@ -139,6 +139,12 @@ class JSONLib(object):
                         elif isinstance(child_path_, Slice):
                             for i in range(child_path_.start, child_path_.end, child_path_.step):
                                 parent_match.value.append(value)
+                elif parent_match.value is None:
+                    if isinstance(child_path_, Fields):
+                        parent_path_.update(json_object, {})
+                    elif isinstance(child_path_, (Index, Slice)):
+                        parent_path_.update(json_object, [])
+                    return cls.set_value_to_json(json_object, json_path, value)
         else:
             if isinstance(child_path_, Fields):
                 value_ = {child_path_.fields[0]: value}
@@ -155,6 +161,25 @@ class JSONLib(object):
                 value_ = ''
             return cls.set_value_to_json(json_object, parent_path_, value_)
         return json_object
+
+    @classmethod
+    def set_values_to_json(cls, parent_path, json_object=None, **children):
+        """
+        Update sub elements for target object in JSON using JSONPath.
+        :param json_object: json as a dictionary object
+        :param parent_path: jsonpath expression for the parent object
+        :param children: the pairs of jsonpath and value for the children
+        :return: updated json_object
+        Examples:
+        | ${json_object}= | Set Values To JSON | $.people | ${json} | .name=JSON | .age=18 |
+        """
+        if json_object:
+            new_json = json_object
+        else:
+            new_json = {}
+            for k, v in children.items():
+                new_json = cls.set_value_to_json(new_json, parent_path + k, v)
+        return new_json
 
     @classmethod
     def delete_object_from_json(cls, json_object, json_path):
