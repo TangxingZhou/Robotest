@@ -27,7 +27,7 @@ def main():
                     'E-mail: tangxing.zhou@transwarp.io'
     )
     robot_arguments = [
-        '--pythonpath', '.',
+        '--pythonpath', os.path.dirname(os.path.abspath(__file__)),
         '--listener', 'libraries.robot.listeners.Listener2',
         '--exclude', 'Skip',
         '--debugfile', 'debug.log'
