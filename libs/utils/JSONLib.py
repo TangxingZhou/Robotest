@@ -98,7 +98,12 @@ class JSONLib(object):
         | ${values}=  |  Get Value From Json  | ${json} |  $..phone_number |
         """
         json_path_expr = parse(json_path)
-        return [match.value for match in json_path_expr.find(json_object)]
+        matches = []
+        try:
+            matches = json_path_expr.find(json_object)
+        except Exception as e:
+            logger.error('Fails to parse the jsonpath {} for:\n{}\n{}'.format(json_path, json_object, e))
+        return [match.value for match in matches]
 
     @classmethod
     def set_value_to_json(cls, json_object, json_path, value=None):
@@ -109,7 +114,7 @@ class JSONLib(object):
         :param value: value for the target object
         :return: updated json_object
         Examples:
-        | ${json_object}= | Set Value To JSON | ${json} | $.title | JSON |
+        | ${json_object}=  |  Set Value To JSON | ${json} |  $.title  |  JSON |
         """
         if isinstance(json_path, JSONPath):
             json_path_ = json_path
@@ -123,6 +128,9 @@ class JSONLib(object):
                 if isinstance(parent_match.value, dict):
                     if isinstance(child_path_, Fields):
                         for field in child_path_.fields:
+                            if isinstance(value, str):
+                                if value.lower() in ('\'none\'', '"none"'):
+                                    value = 'None'
                             parent_match.value[field] = value
                 elif isinstance(parent_match.value, list):
                     child_matches = child_path_.find(parent_match.value)
@@ -177,7 +185,13 @@ class JSONLib(object):
             new_json = json_object
         else:
             new_json = {}
-            for k, v in children.items():
+        for k, v in children.items():
+            if isinstance(v, dict):
+                new_json = cls.set_values_to_json(parent_path + k, new_json, **v)
+            elif isinstance(v, list):
+                for index, val in enumerate(v):
+                    new_json = cls.set_values_to_json(parent_path + k, new_json, **{'[{}]'.format(index): val})
+            else:
                 new_json = cls.set_value_to_json(new_json, parent_path + k, v)
         return new_json
 
