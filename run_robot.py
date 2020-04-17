@@ -26,12 +26,19 @@ def main():
                     'Company: Transwarp\n'
                     'E-mail: tangxing.zhou@transwarp.io'
     )
+    venv_pythonpath = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        '.venv', 'lib',
+        'python{major}.{minor}'.format(major=sys.version_info.major, minor=sys.version_info.minor),
+    )
     robot_arguments = [
-        '--pythonpath', os.path.dirname(os.path.abspath(__file__)),
+        # '--pythonpath', os.path.dirname(os.path.abspath(__file__)),
         '--listener', 'libraries.robot.listeners.Listener2',
         '--exclude', 'Skip',
         '--debugfile', 'debug.log'
     ]
+    if os.path.isdir(venv_pythonpath):
+        robot_arguments.extend(['--pythonpath', venv_pythonpath])
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
