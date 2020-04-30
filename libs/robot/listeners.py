@@ -60,6 +60,8 @@ class Listener2(object):
             self.__exec_dir = BuiltIn().get_variable_value('${EXECDIR}')
             env_name = BuiltIn().get_variable_value('${ENV}', 'QA').upper()
             BuiltIn().set_suite_variable('${ENV}', env_name)
+            BuiltIn().set_global_variable('${EmptyList}', [])
+            BuiltIn().set_global_variable('${EmptyMap}', {})
             int_or_ext = BuiltIn().get_variable_value('${IntExt}', 'Internal')
             browser = BuiltIn().get_variable_value('${Browser}', 'Chrome')
             self.__run_type = BuiltIn().get_variable_value('${RunType}', 'Smoke')

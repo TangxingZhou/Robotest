@@ -187,10 +187,16 @@ class JSONLib(object):
             new_json = {}
         for k, v in children.items():
             if isinstance(v, dict):
-                new_json = cls.set_values_to_json(parent_path + k, new_json, **v)
+                if len(v) == 0:
+                    new_json = cls.set_value_to_json(new_json, parent_path + k, v)
+                else:
+                    new_json = cls.set_values_to_json(parent_path + k, new_json, **v)
             elif isinstance(v, list):
-                for index, val in enumerate(v):
-                    new_json = cls.set_values_to_json(parent_path + k, new_json, **{'[{}]'.format(index): val})
+                if len(v) == 0:
+                    new_json = cls.set_value_to_json(new_json, parent_path + k, v)
+                else:
+                    for index, val in enumerate(v):
+                        new_json = cls.set_values_to_json(parent_path + k, new_json, **{'[{}]'.format(index): val})
             else:
                 new_json = cls.set_value_to_json(new_json, parent_path + k, v)
         return new_json
