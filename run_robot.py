@@ -29,7 +29,7 @@ def main():
     venv_pythonpath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         '.venv', 'lib',
-        'python{major}.{minor}'.format(major=sys.version_info.major, minor=sys.version_info.minor),
+        'python{major}.{minor}'.format(major=sys.version_info.major, minor=sys.version_info.minor), 'site-packages'
     )
     robot_arguments = [
         # '--pythonpath', os.path.dirname(os.path.abspath(__file__)),

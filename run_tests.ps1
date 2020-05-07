@@ -14,6 +14,16 @@ function SSH-Login-With-Key($ip, $user="root") {
 
 function Get-TOS-Cluster-Info($ip, $user="root") {
     SSH-Login-With-Key $ip $user
+    $Enable_APIServer_Insecure_Port = "
+    sed -i 's/\(.*insecure-bind-address\).*/\1=0.0.0.0 \\/g' /opt/kubernetes/manifests-multi/kube-apiserver.manifest
+    timeout 2m bash -c `"`"while true; do { curl `$(hostname):8080/api/v1/nodes>>/dev/null 2>`&1 `&`& if [ `$? -eq 0 ]; then break; else sleep 1; fi; } `|`| { sleep 1; }; done`"`"
+    rc=`$?
+    if [ `$rc -ne 0 ]; then
+        echo >`&2 `"[INIT WARNNING] Kube APIServer \`"`$(hostname):8080\`" is not ready within 2mins.`"
+        exit `$rc
+    fi
+    " -replace "\r", ""
+    ssh $user@$ip $Enable_APIServer_Insecure_Port
     $Kubectl_Nodes_Info = "
     if [ -x `"`"`$(command -v kubectl)`"`" ]; then
         for node in `$(kubectl get node --no-headers|awk '{print `$1}')
@@ -93,17 +103,6 @@ elseif ($args[0] -eq "--cluster") {
     if ($cluster_info -eq "") {
         write-host "[RUN ERROR]: Unable to get the TOS cluster info." -foregroundcolor red
         exit(1)
-    }
-    $tos_nodes = $cluster_info -split ":"
-    $tos_nodes = $tos_nodes[-1] -split ","
-    for ($i=0; $i -lt $tos_nodes.count; $i++) {
-        if ($i % 2 -eq 1) {
-            $node_ip, $node_host = $tos_nodes[$i - 1], $tos_nodes[$i]
-            if((get-content $env:windir\System32\drivers\etc\hosts |?{$_ -match "\s$node_host"}) -eq $null) {
-                "`n$node_ip $node_host" | Out-File -FilePath "$env:windir\System32\drivers\etc\hosts" -Append -encoding ascii
-                write-host "[RUN WARNING]: Add TOS node info of `"$node_ip $node_host`" into $env:windir\System32\drivers\etc\hosts." -foregroundcolor yellow
-            }
-        }
     }
     $run_arguments = $run_arguments + "--variablefile" + "variables\$script:project\variables.py:${cluster_info}:$login_pwd" + $args[2..$args.count]
     python -m run_robot $run_arguments
