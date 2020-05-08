@@ -181,10 +181,10 @@ class JSONLib(object):
         Examples:
         | ${json_object}= | Set Values To JSON | $.people | ${json} | .name=JSON | .age=18 |
         """
-        if json_object:
-            new_json = json_object
-        else:
+        if json_object is None:
             new_json = {}
+        else:
+            new_json = json_object
         for k, v in children.items():
             if isinstance(v, dict):
                 if len(v) == 0:
