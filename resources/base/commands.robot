@@ -1,5 +1,5 @@
 *** Settings ***
-Library     OperatingSystem
+Library     libraries.utils.os_ext.OSExt
 Library     SSHLibrary
 
 *** Keywords ***
@@ -12,6 +12,13 @@ Execute Command And Verify Return Code
     [Arguments]         ${command}          ${expected_rc}=${0}
     ${out}  ${rc}=      Execute Command     ${command}              return_rc=True
     Should Be Equal     ${rc}               ${expected_rc}
+    [Return]            ${out}
+
+Execute Command On Host
+    [Arguments]         ${host}         ${username}     ${password}     ${command}  ${expected_rc}=${0}
+    Open Connection And Log In  ${host}     ${username}     ${password}
+    ${out}=     Execute Command And Verify Return Code  ${command}  ${expected_rc}
+    Close Connection
     [Return]            ${out}
 
 Execute Commands In An Interactive Session
