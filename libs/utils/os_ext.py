@@ -2,6 +2,7 @@ import sys
 import platform
 import re
 import os.path
+import base64
 from robot.libraries.OperatingSystem import OperatingSystem
 
 
@@ -37,16 +38,27 @@ class OSExt(OperatingSystem):
         :return: None
         Examples:
         | Append Content To File | /etc/hosts | 127.0.0.1 | localhost |
-        | Append Content To File | C:\\Windows\\System32\\drivers\\etc\\hosts | 127.0.0.1 | localhost |
+        | Append Content To File | C:\\Windows\\System32\\drivers\\etc\\hosts | 127.0.0.1 | localhost${\n} |
         """
         self.file_should_exist(path)
         matches = self.grep_file(path, pattern)
         if matches == '':
             self.append_to_file(path, content)
 
+    def append_content_to_hosts(self, content):
+        """
+        Append content to hosts of the system.
+        :param content: The content to append.
+        :return: None
+        Examples:
+        | Append Content To Hosts | 127.0.0.1 localhost |
+        """
+        hosts_path = self.get_hosts_path()
+        self.append_content_to_file(hosts_path, content, content + os.linesep)
+
     def remove_content_from_file(self, path, pattern):
         """
-        Append lines from file if the given pattern is matched.
+        Remove lines from file if the given pattern is matched.
         :param path: The path of the target file.
         :param pattern: The pattern to search.
         :return: None
@@ -70,6 +82,17 @@ class OSExt(OperatingSystem):
                 f.writelines(lines)
         else:
             self._log('No lines matched.', 'DEBUG')
+
+    def remove_content_from_hosts(self, pattern):
+        """
+        Remove lines from hosts of the system if the given pattern is matched.
+        :param pattern: The pattern to search.
+        :return: None
+        Examples:
+        | Remove Content From Hosts | 127.0.0.1 |
+        """
+        hosts_path = self.get_hosts_path()
+        self.remove_content_from_file(hosts_path, pattern)
 
     def replace_content_in_file(self, path, pattern, content, index=None):
         """
@@ -115,3 +138,26 @@ class OSExt(OperatingSystem):
                 f.writelines(lines)
         else:
             self._log('No lines matched.', 'DEBUG')
+
+    @classmethod
+    def encode_str_with_base64(cls, s):
+        """
+        To encode the input strings with base64.
+        :param s: The input strings.
+        :return: The strings encoded by base64.
+        """
+        if isinstance(s, str):
+            return base64.b64encode(s.encode()).decode()
+        else:
+            raise TypeError('Strings are required.')
+
+    def encode_file_with_base64(self, path):
+        """
+        To encode the input file with base64.
+        :param path: The path of the target file.
+        :return: The content in the input file encoded by base64.
+        """
+        path = self._absnorm(path)
+        self.file_should_exist(path)
+        with open(path, mode='rb') as f:
+            return base64.b64encode(f.read()).decode()
