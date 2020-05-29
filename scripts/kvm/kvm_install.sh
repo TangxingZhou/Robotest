@@ -154,7 +154,7 @@ esac
 # else
 #     echo "bash -x /root/init.sh" >> /media/virtimage/etc/rc.d/rc.local
 # fi
-echo "bash -x /root/init.sh" >> /media/virtimage/etc/rc.d/rc.local
+echo "bash -x /root/kvm_init.sh" >> /media/virtimage/etc/rc.d/rc.local
 chmod +x /media/virtimage/etc/rc.d/rc.local
 cat > /media/virtimage/etc/sysconfig/network-scripts/ifcfg-eth0 <<EOF
 TYPE=Ethernet
@@ -173,7 +173,7 @@ sed -i 's/.*UseDNS.*/UseDNS no/' /media/virtimage/etc/ssh/sshd_config
 sed -i 's/.*GSSAPIAuthentication.*/GSSAPIAuthentication no/' /media/virtimage/etc/ssh/sshd_config
 sed -i 's/.*StrictHostKeyChecking.*/StrictHostKeyChecking no/' /media/virtimage/etc/ssh/ssh_config
 sed -i 's/SELINUX=.*/SELINUX=disabled/' /media/virtimage/etc/selinux/config
-cp ${WORKSPACE}/init.sh /media/virtimage/root/
+cp ${WORKSPACE}/kvm_init.sh /media/virtimage/root/
 # cp ${WORKSPACE}/Python-3.5.2.tgz /media/virtimage/root/
 # sleep 5s
 umount /media/virtimage && rm -rf /media/virtimage || exit 1
