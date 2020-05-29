@@ -50,7 +50,6 @@ for i in `seq 1 $HOST_NUM`; do
     HOST_OS=$(cat $CONF_FILE | shyaml get-value nodes.`expr $i - 1`.$HOST_HOSTNAME.os)
     HOST_MEM=$(cat $CONF_FILE | shyaml get-value nodes.`expr $i - 1`.$HOST_HOSTNAME.memory)
     HOST_CPU=$(cat $CONF_FILE | shyaml get-value nodes.`expr $i - 1`.$HOST_HOSTNAME.vcpu)
-    HOST_SNAPSHOT=$(cat $CONF_FILE | shyaml get-value nodes.`expr $i - 1`.$HOST_HOSTNAME.snapshot)
     HOST_DISKPATH=$(cat $CONF_FILE | shyaml get-value nodes.`expr $i - 1`.$HOST_HOSTNAME.diskpath)
     HOST_DISK_NUM=$(cat $CONF_FILE | shyaml get-length nodes.`expr $i - 1`.$HOST_HOSTNAME.datadisks)
     HOST_DISKLIST=$(cat $CONF_FILE | shyaml keys nodes.`expr $i - 1`.$HOST_HOSTNAME.datadisks)
@@ -143,18 +142,19 @@ case ${HOST_OS} in
         echo "Not Support OS" && exit 1
         ;;
 esac
-if [ $i -eq 1 ]; then
-    echo "bash -x /root/init.sh 3.5.2" >> /media/virtimage/etc/rc.d/rc.local
-    echo "export HOSTIP=${HOST_IP}" >> /media/virtimage/root/.bashrc
-    # cluster_hosts=""
-    # cluster_ips=""
-    # for host_name in ${HOSTS_HOSTNAME[@]}; do cluster_hosts=$cluster_hosts,$host_name; done
-    # for ip in ${HOSTS_IP[@]}; do cluster_ips=$cluster_ips,$ip; done
-    # echo "export TOS_CLUSTER_HOSTS_NAME=${cluster_hosts:1}" >> /media/virtimage/root/.bashrc
-    # echo "export TOS_CLUSTER_HOSTS_IP=${cluster_ips:1}" >> /media/virtimage/root/.bashrc
-else
-    echo "bash -x /root/init.sh" >> /media/virtimage/etc/rc.d/rc.local
-fi
+# if [ $i -eq 1 ]; then
+#     echo "bash -x /root/init.sh 3.5.2" >> /media/virtimage/etc/rc.d/rc.local
+#     echo "export HOSTIP=${HOST_IP}" >> /media/virtimage/root/.bashrc
+#     cluster_hosts=""
+#     cluster_ips=""
+#     for host_name in ${HOSTS_HOSTNAME[@]}; do cluster_hosts=$cluster_hosts,$host_name; done
+#     for ip in ${HOSTS_IP[@]}; do cluster_ips=$cluster_ips,$ip; done
+#     echo "export TOS_CLUSTER_HOSTS_NAME=${cluster_hosts:1}" >> /media/virtimage/root/.bashrc
+#     echo "export TOS_CLUSTER_HOSTS_IP=${cluster_ips:1}" >> /media/virtimage/root/.bashrc
+# else
+#     echo "bash -x /root/init.sh" >> /media/virtimage/etc/rc.d/rc.local
+# fi
+echo "bash -x /root/init.sh" >> /media/virtimage/etc/rc.d/rc.local
 chmod +x /media/virtimage/etc/rc.d/rc.local
 cat > /media/virtimage/etc/sysconfig/network-scripts/ifcfg-eth0 <<EOF
 TYPE=Ethernet
@@ -171,9 +171,10 @@ NETMASK=${HOST_NETMASK}
 EOF
 sed -i 's/.*UseDNS.*/UseDNS no/' /media/virtimage/etc/ssh/sshd_config
 sed -i 's/.*GSSAPIAuthentication.*/GSSAPIAuthentication no/' /media/virtimage/etc/ssh/sshd_config
+sed -i 's/.*StrictHostKeyChecking.*/StrictHostKeyChecking no/' /media/virtimage/etc/ssh/ssh_config
 sed -i 's/SELINUX=.*/SELINUX=disabled/' /media/virtimage/etc/selinux/config
 cp ${WORKSPACE}/init.sh /media/virtimage/root/
-cp ${WORKSPACE}/Python-3.5.2.tgz /media/virtimage/root/
+# cp ${WORKSPACE}/Python-3.5.2.tgz /media/virtimage/root/
 # sleep 5s
 umount /media/virtimage && rm -rf /media/virtimage || exit 1
 
@@ -203,16 +204,50 @@ cat $KVM_DISKS_TMP | while read line; do
 done
 virsh define ${VM_XML_PATH}/${VM_NAME}.xml
 virsh start ${VM_NAME}
-sleep 30
+# sleep 30
+num=0
+while [ $num -lt 120 ]; do
+    if ping ${HOST_IP} -c 1 -w 1 > /dev/null; then
+        break
+    else
+        let num++
+    fi
+done
+if [ $num -eq 120 ]; then
+    echo >&2 "${VM_NAME}@${HOST_IP} is not reachable within 2 mins."
+else
+    echo "${VM_NAME}@${HOST_IP} is reachable now."
+fi
+done
 
 
 :<<!
 STEP 5
 Create VM Snapshot
 !
-if [[ -n ${HOST_SNAPSHOT} ]]; then
-    virsh snapshot-create-as ${VM_NAME} ${HOST_SNAPSHOT} || exit 1
-else
-    virsh snapshot-create-as ${VM_NAME} mostclean || exit 1
-fi
+for ((i=0; i<$HOST_NUM; i++)); do
+    HOST_HOSTNAME=$(cat $CONF_FILE | shyaml keys-0 nodes.$i)
+    HOST_IP=$(cat $CONF_FILE | shyaml get-value nodes.$i.$HOST_HOSTNAME.ip)
+    HOST_OS=$(cat $CONF_FILE | shyaml get-value nodes.$i.$HOST_HOSTNAME.os)
+    HOST_SNAPSHOT=$(cat $CONF_FILE | shyaml get-value nodes.$i.$HOST_HOSTNAME.snapshot)
+    VM_NAME=${HOST_OS}_${HOST_IP//./_}
+    num=0
+    while [ $num -lt 600 ]; do
+        if sshpass -p123456 ssh -o StrictHostKeyChecking=no root@${HOST_IP} 'ps -ef | grep -v grep | grep -q /root/init.sh'; then
+            sleep 1
+            let num++
+        else
+            break
+        fi
+    done
+    if [ $num -eq 600 ]; then
+        echo >&2 "/root/init.sh is still running at ${HOST_IP} after 10 mins, won't create snapshot for ${VM_NAME}."
+    else
+        echo "Create snapshot for ${VM_NAME}."
+        if [[ -n ${HOST_SNAPSHOT} ]]; then
+            virsh snapshot-create-as ${VM_NAME} ${HOST_SNAPSHOT} || exit 1
+        else
+            virsh snapshot-create-as ${VM_NAME} mostclean || exit 1
+        fi
+    fi
 done

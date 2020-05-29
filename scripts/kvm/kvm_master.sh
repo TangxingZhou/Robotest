@@ -103,7 +103,7 @@ function shutdown_domains() {
 function reboot_domains {
     for domain in $*; do
         local status=$(get_domain_status $domain)
-        if [ "$status" = "running" -o "$status" = "shut off" -o "$status" = "关闭" ]; then
+        if [ "$status" = "running" ]; then
             echo >&2 "[Domain Info]: Rebooting $domain."
             virsh reboot $domain
             [ $? -ne 0 ] && echo >&2 "[Domain Error]: Fails to reboot $domain." && continue
@@ -121,6 +121,8 @@ function reboot_domains {
             if [ $stop -eq $default_time_out ]; then
                 echo >&2 "[Domain Error]: Fails to reboot $domain within ${default_time_out}s."
             fi
+        elif [ "$status" = "shut off" -o "$status" = "关闭" ]; then
+            start_domains $domain
         else
             echo >&2 "[Domain Warning]: Status of $domain is $status, won't reboot it."
         fi
@@ -234,17 +236,15 @@ function create_snapshots_for_domains {
 function revert_snapshots_for_domains {
     for domain in $*; do
         domain_has_snapshot $domain $snapshot_name
-        if [ $? -ne 0 ]; then
+        if [ $? -eq 0 ]; then
             shutdown_domains $domain
             echo >&2 "[Snapshot Info]: Reverting snapshot $snapshot_name for domain $domain."
             virsh snapshot-revert $domain $snapshot_name &
-            start_domains $domain
         fi
     done
     wait
     for domain in $*; do
-        ip=${domain#*_}
-        sshpass -p123456 ssh -o StrictHostKeyChecking=no root@${ip//_/.} ntpdate cn.pool.ntp.org
+        reboot_domains $domain
     done
 }
 
@@ -401,7 +401,7 @@ if [ $action = "create" ]; then
         echo >&2 "[Args Error]: Cluster name should be specified with option --cluster [cluster name]."
         exit 1
     else
-        bash autoinstall.sh ${cluster_name}.yml
+        bash kvm_install.sh ${cluster_name}.yml
     fi
 elif [ $action = "start" ]; then
     start_domains ${domains[*]}
