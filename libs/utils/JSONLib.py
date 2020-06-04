@@ -106,6 +106,26 @@ class JSONLib(object):
         return [match.value for match in matches]
 
     @classmethod
+    def path_value_matches_json(cls, json_object, json_path, value=None):
+        """
+        Determine whether the given value matches the object parsed by json path.
+        :param json_object: json as a dictionary object
+        :param json_path: jsonpath expression
+        :param value: value that may match the target object
+        :return: True or False
+        Examples:
+        | ${values}=  |  Get Value From Json  | ${json} |  $..phone_number |
+        """
+        match = False
+        matches = cls.get_value_from_json(json_object, json_path)
+        if matches:
+            if value is None:
+                match = True
+            else:
+                match = value in matches
+        return match
+
+    @classmethod
     def set_value_to_json(cls, json_object, json_path, value=None):
         """
         Update value to JSON using JSONPath.
