@@ -106,7 +106,7 @@ class JSONLib(object):
         return [match.value for match in matches]
 
     @classmethod
-    def path_value_matches_json(cls, json_object, json_path, value=None):
+    def path_value_should_matches_json(cls, json_object, json_path, value=None):
         """
         Determine whether the given value matches the object parsed by json path.
         :param json_object: json as a dictionary object
@@ -123,7 +123,11 @@ class JSONLib(object):
                 match = True
             else:
                 match = value in matches
-        return match
+        if not match:
+            raise AssertionError(
+                '{} doesn\'t match the values {} get from json object by jsonpath of {}.'.
+                    format(value, matches, json_path)
+            )
 
     @classmethod
     def set_value_to_json(cls, json_object, json_path, value=None):
@@ -206,19 +210,7 @@ class JSONLib(object):
         else:
             new_json = json_object
         for k, v in children.items():
-            if isinstance(v, dict):
-                if len(v) == 0:
-                    new_json = cls.set_value_to_json(new_json, parent_path + k, v)
-                else:
-                    new_json = cls.set_values_to_json(parent_path + k, new_json, **v)
-            elif isinstance(v, list):
-                if len(v) == 0:
-                    new_json = cls.set_value_to_json(new_json, parent_path + k, v)
-                else:
-                    for index, val in enumerate(v):
-                        new_json = cls.set_values_to_json(parent_path + k, new_json, **{'[{}]'.format(index): val})
-            else:
-                new_json = cls.set_value_to_json(new_json, parent_path + k, v)
+            new_json = cls.set_value_to_json(new_json, parent_path + k, v)
         return new_json
 
     @classmethod
