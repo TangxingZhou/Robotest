@@ -214,22 +214,23 @@ class JSONLib(object):
         return new_json
 
     @classmethod
-    def delete_object_from_json(cls, json_object, json_path):
+    def delete_objects_from_json(cls, json_object, *json_pathes):
         """
-        Delete Object From JSON using json_path.
+        Delete Objects From JSON by jsonpath.
         :param json_object: json as a dictionary object
-        :param json_path: jsonpath expression
+        :param json_pathes: jsonpath expressions
         :return: new json_object
         Examples:
         | ${json_object}=  |  Delete Object From Json | ${json} |  $..address.streetAddress  |
         """
-        json_path_expr = parse(json_path)
-        for match in json_path_expr.find(json_object):
-            path = match.path
-            if isinstance(path, Index):
-                del(match.context.value[match.path.index])
-            elif isinstance(path, Fields):
-                del(match.context.value[match.path.fields[0]])
+        for json_path in json_pathes:
+            json_path_expr = parse(json_path)
+            for match in json_path_expr.find(json_object):
+                path = match.path
+                if isinstance(path, Index):
+                    del(match.context.value[match.path.index])
+                elif isinstance(path, Fields):
+                    del(match.context.value[match.path.fields[0]])
         return json_object
 
     @classmethod
