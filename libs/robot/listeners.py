@@ -74,6 +74,12 @@ class Listener2(object):
                                           map(lambda x: '${' + 'EMAIL_' + x + '}',
                                               ('SERVER', 'SENDER_ACCOUNT', 'SENDER_PSW', 'RECEIVERS'))))
             self.__local_host = BuiltIn().get_variable_value('${LOCAL_HOST}', '')
+            # BuiltIn().import_library(
+            #     'libraries/TOS/ClientConfig.py',
+            #     'host={}'.format(
+            #         BuiltIn().get_variable_value('${KUBE_APISERVER_INSECURE_URL}', 'http://localhost:8080')
+            #     )
+            # )
             for k in self.__build.keys():
                 self.__build[k] = BuiltIn().get_variable_value('${BUILD_' + k.upper() + '}')
             keywords_dir = os.path.join('resources', self.__project, self.__sub_project, 'keywords')
