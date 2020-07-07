@@ -104,6 +104,8 @@ elseif ($args[0] -eq "--cluster") {
         write-host "[RUN ERROR]: Unable to get the TOS cluster info." -foregroundcolor red
         exit(1)
     }
+    $env:ROBOT_SYSLOG_FILE="$PSScriptRoot\out\$script:project\syslog.txt"
+    $env:ROBOT_SYSLOG_LEVEL="DEBUG"
     $run_arguments = $run_arguments + "--variablefile" + "variables\$script:project\variables.py:${cluster_info}:$login_pwd" + $args[2..$args.count]
     python -m run_robot $run_arguments
 }

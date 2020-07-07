@@ -57,6 +57,8 @@ elif [ "$1" = "--testdoc" ]; then
 elif [ "$1" = "--cluster" ]; then
     run_arguments=$(parse_robot_start_suite ${@:$#})
     project=$(echo $run_arguments | grep -oE "\<Project:[^ ]*\>" | awk -F ':' '{print $2}')
+    export ROBOT_SYSLOG_FILE=$workspace/out/$project/syslog.txt
+    export ROBOT_SYSLOG_LEVEL=DEBUG
     OLD_IFS="$IFS"
     login_pwd=123456
     if [ "$2" = "localhost" -o "$2" = "127.0.0.1" ]; then
