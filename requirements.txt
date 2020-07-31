@@ -6,6 +6,8 @@ robotframework-seleniumlibrary
 robotremoteserver
 robotframework-requests
 robotframework-sshlibrary
+allure-robotframework
+allure-pytest
 pymssql
 mysqlclient
 requests
@@ -15,4 +17,4 @@ kubernetes
 jsonpath-ng
 jinja2
 pytz
-locustio
+locust

@@ -13,11 +13,19 @@ from libs.databases.Sqlite import Sqlite
 from libs.reporting import *
 from libs.reporting.email_report import *
 
+import allure_commons
+from allure_commons.lifecycle import AllureLifecycle
+from allure_commons.logger import AllureFileLogger
+from allure_robotframework.allure_listener import AllureListener
+from allure_robotframework.types import RobotKeywordType
+
+DEFAULT_OUTPUT_PATH = os.path.join('out', 'allure')
+
 
 class Listener2(object):
     ROBOT_LISTENER_API_VERSION = 2
 
-    def __init__(self, db_type):
+    def __init__(self, db_type, logger_path=DEFAULT_OUTPUT_PATH):
         self.__db_type = db_type.upper()
         self.__db = None
         self.__db_info = ()
@@ -38,6 +46,13 @@ class Listener2(object):
         self.__local_host = ''
         self.__build = {'id': None, 'url': None, 'name': None, 'result': None, 'duration': None, 'date': None}
 
+        self.messages = Messages()
+        self.logger = AllureFileLogger(logger_path)
+        self.lifecycle = AllureLifecycle()
+        self.listener = AllureListener(self.lifecycle)
+        allure_commons.plugin_manager.register(self.logger)
+        allure_commons.plugin_manager.register(self.listener)
+
     def start_suite(self, name, attrs):
         """
         Called when a test suite starts.
@@ -56,6 +71,8 @@ class Listener2(object):
         :param attrs: A dictionary / map contains the attributes for current suite.
         :return:
         """
+        self.messages.start_context()
+        self.listener.start_suite_container(name, attrs)
         if attrs['id'] == 's1':
             self.__exec_dir = BuiltIn().get_variable_value('${EXECDIR}')
             env_name = BuiltIn().get_variable_value('${ENV}', 'QA').upper()
@@ -110,7 +127,9 @@ class Listener2(object):
         :param attrs: A dictionary / map contains the attributes for current test.
         :return:
         """
-        pass
+        self.messages.start_context()
+        self.listener.start_test_container(name, attrs)
+        self.listener.start_test(name, attrs)
 
     def start_keyword(self, name, attrs):
         """
@@ -133,7 +152,16 @@ class Listener2(object):
         :param attrs: A dictionary / map contains the attributes for current keyword.
         :return:
         """
-        pass
+        self.messages.start_context()
+        keyword_type = attrs.get('type')
+        # Todo fix value assign
+        keyword_name = '{} = {}'.format(attrs.get('assign')[0], name) if attrs.get('assign') else name
+        if keyword_type == RobotKeywordType.SETUP:
+            self.listener.start_before_fixture(keyword_name)
+        elif keyword_type == RobotKeywordType.TEARDOWN:
+            self.listener.start_after_fixture(keyword_name)
+        else:
+            self.listener.start_keyword(name)
 
     def end_keyword(self, name, attrs):
         """
@@ -159,7 +187,14 @@ class Listener2(object):
         :param attrs: A dictionary / map contains the attributes for current keyword.
         :return:
         """
-        pass
+        messages = self.messages.stop_context()
+        keyword_type = attrs.get('type')
+        if keyword_type == RobotKeywordType.SETUP:
+            self.listener.stop_before_fixture(attrs, messages)
+        elif keyword_type == RobotKeywordType.TEARDOWN:
+            self.listener.stop_after_fixture(attrs, messages)
+        else:
+            self.listener.stop_keyword(attrs, messages)
 
     def end_test(self, name, attrs):
         """
@@ -181,7 +216,9 @@ class Listener2(object):
         :param attrs: A dictionary / map contains the attributes for current test.
         :return:
         """
-        pass
+        messages = self.messages.stop_context()
+        self.listener.stop_test(name, attrs, messages)
+        self.listener.stop_test_container(name, attrs)
 
     def end_suite(self, name, attrs):
         """
@@ -203,7 +240,8 @@ class Listener2(object):
         :param attrs:
         :return: A dictionary / map contains the attributes for current suite.
         """
-        pass
+        self.messages.stop_context()
+        self.listener.stop_suite_container(name, attrs)
 
     def log_message(self, message):
         """
@@ -217,7 +255,7 @@ class Listener2(object):
         :param message: A dictionary with the contents.
         :return:
         """
-        pass
+        self.messages.push(message)
 
     def message(self, message):
         """
@@ -420,6 +458,9 @@ class Listener2(object):
                     exit(1)
                 finally:
                     email_client.quit()
+        for plugin in [self.logger, self.listener]:
+            name = allure_commons.plugin_manager.get_name(plugin)
+            allure_commons.plugin_manager.unregister(name=name)
 
 
 class Listener3(object):
@@ -448,3 +489,17 @@ class Listener3(object):
 
     def close(self):
         pass
+
+
+class Messages(object):
+    def __init__(self):
+        self._stack = []
+
+    def start_context(self):
+        self._stack.append([])
+
+    def stop_context(self):
+        return self._stack.pop() if self._stack else list()
+
+    def push(self, message):
+        self._stack[-1].append(message) if self._stack else self._stack.append([message])
