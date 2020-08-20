@@ -84,7 +84,7 @@ elif [ "$1" = "--cluster" ]; then
     python3 -m run_robot $run_arguments $*
 else
     run_arguments=$(parse_robot_start_suite ${@:$#})
-    run_arguments="$run_arguments --variablefile resources/$(echo $run_arguments | grep -oE "\<Project:[^ ]*\>" | awk -F ':' '{print $2}')/variables.py"
+    run_arguments="--variable LOCAL_HOST:`hostname` --variablefile resources/$(echo $run_arguments | grep -oE "\<Project:[^ ]*\>" | awk -F ':' '{print $2}')/variables.py"
     python3 -m run_robot $run_arguments $*
 fi
 # python3 -m run_robot --argumentfile runners/Demo/Internal_Chrome.txt

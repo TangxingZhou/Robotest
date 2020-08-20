@@ -9,11 +9,9 @@ robotframework-sshlibrary
 allure-robotframework
 allure-pytest
 pymssql
+pyodbc
+sqlalchemy
 mysqlclient
-requests
-urllib3
-six
-kubernetes
 jsonpath-ng
 jinja2
 pytz
