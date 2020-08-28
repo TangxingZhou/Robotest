@@ -221,6 +221,20 @@ class Argument(Base):
     keyword = relationship("Keyword", back_populates="arguments")
 
 
+class Error(Base):
+    __tablename__ = 'errors'
+    __xml_element__ = ET.Element(__tablename__)
+
+    id = Column(Integer, primary_key=True)
+    level = Column(Text, nullable=False)
+    timestamp = Column(DateTime, nullable=False)
+    text = Column(Text, nullable=False)
+
+    def to_xml_element(self):
+        return ET.Element(self.__tablename__)
+
+
+
 if __name__ == '__main__':
     Base.metadata.create_all(engine)
     root = None
