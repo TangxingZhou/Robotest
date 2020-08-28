@@ -1,20 +1,19 @@
-from pathlib import Path
+import os
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve(strict=True)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'robot_results.db'
+        'engine': 'libs.databases.sqlite',
+        'db': 'robot_results.db'
     },
     'mysql': {
-        # 'ENGINE': 'django.db.backends.mysql',
-        'db': 'robot',
-        'user': 'root',
-        'passwd': '123456',
+        'engine': 'libs.databases.mysql',
         'host': '172.26.0.13',
-        'port': 3306
+        'port': 3306,
+        'user': 'root',
+        'password': '123456',
+        'db': 'robot_results'
     }
 }
 

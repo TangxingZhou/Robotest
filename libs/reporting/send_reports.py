@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from libs.reporting.smtp import EmailReport
 from libs.reporting.robot_results_parser import RobotResultsParser
 from libs.reporting.database_writer import DatabaseWriter
-from libs.databases.Sqlite import Sqlite
+from libs.databases.sqlite import Sqlite
 from libs.results.jira_service import JiraService
 from libs.results.ftp_service import FTPService
 
@@ -173,7 +173,7 @@ class SendReports(object):
             exit(1)
         return test_run
 
-    def _send_email_report(self, send_email=False, **kwargs):
+    def __send_email_report(self, send_email=False, **kwargs):
         if send_email:
             email_info = tuple(map(lambda var: getattr(self.__project_variables_module, var),
                                    map(lambda x: 'REPORT_EMAIL' + '_' + x, ['HOST', 'FROM'])))

@@ -9,7 +9,7 @@ from pytz import timezone
 from robot import rebot
 from robot.api import ExecutionResult
 from robot.libraries.BuiltIn import BuiltIn
-from libs.databases.Sqlite import Sqlite
+from libs.databases.sqlite import Sqlite
 from libs.reporting import *
 from libs.reporting.email_report import *
 
