@@ -5,7 +5,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASES = {
     'default': {
         'engine': 'libs.databases.sqlite',
-        'db': 'robot_results.db'
+        'db': os.path.join(BASE_DIR, 'out', 'robot_results.db')
     },
     'mysql': {
         'engine': 'libs.databases.mysql',
