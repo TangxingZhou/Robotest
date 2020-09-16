@@ -8,11 +8,14 @@ robotframework-requests
 robotframework-sshlibrary
 allure-robotframework
 allure-pytest
-pymssql
-pyodbc
 sqlalchemy
+sqlalchemy-utils
 mysqlclient
+# https://docs.microsoft.com/en-us/sql/connect/python/pyodbc/python-sql-driver-pyodbc?view=sql-server-ver15
+pyodbc
 jsonpath-ng
 jinja2
 pytz
 locust
+celery
+redis

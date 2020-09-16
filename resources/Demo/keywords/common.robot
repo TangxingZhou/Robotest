@@ -2,8 +2,8 @@
 Library     uuid
 Library     String
 Library     Collections
-Library     libraries/utils/JSONLib.py
-Library     libraries.utils.os_ext.OSExt
+Library     libs/utils/JSONLib.py
+Library     libs.utils.os_ext.OSExt
 
 *** Keywords ***
 kube_requestEvenForUnsuccessfulCode
