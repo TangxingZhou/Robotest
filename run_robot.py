@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+import shutil
 import argparse
 import re
 import importlib
@@ -193,6 +194,7 @@ def main():
         args, unknown = parser.parse_known_args()
         project, sub_project = get_project_info_from_suite_source(unknown[-1])
         robot_output_dir = os.path.join('out', project, sub_project)
+        shutil.rmtree(robot_output_dir)
         robot_arguments.extend(['--variable', 'ReportDB:'+args.database])
         if args.worker_mode:
             if args.master_mode:
