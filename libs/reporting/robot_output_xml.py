@@ -10,7 +10,7 @@ from robot.api import ExecutionResult
 import xml.etree.ElementTree as ET
 # https://www.osgeo.cn/sqlalchemy/core/tutorial.html
 from sqlalchemy import create_engine
-from sqlalchemy import Column, Integer, Text, String, ForeignKey
+from sqlalchemy import Column, Integer, Text, String, DateTime, BLOB, ForeignKey
 from sqlalchemy.orm import sessionmaker, relationship
 from libs.databases import Base
 
@@ -354,6 +354,23 @@ class Message(Base):
         msg.attrib = {'timestamp': self.timestamp, 'level': self.level}
         msg.text = self.text
         return msg
+
+
+class CeleryResult(Base):
+    __tablename__ = 'celery_taskmeta'
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(String(155), unique=True)
+    status = Column(String(50))
+    result = Column(BLOB)
+    date_done = Column(DateTime)
+    traceback = Column(Text)
+    name = Column(String(155))
+    args = Column(BLOB)
+    kwargs = Column(BLOB)
+    worker = Column(String(155))
+    retries	 = Column(Integer)
+    queue = Column(String(155))
 
 
 class RobotResult(object):

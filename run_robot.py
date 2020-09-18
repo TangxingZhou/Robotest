@@ -100,8 +100,10 @@ class Robot(RobotFramework):
                         suite_relpath
                     ]
                     # TODO
+                    # celery_taskmeta
                     self.tasks_id.append(task_id)
                     res = run_test.delay(arguments)
+                    # res.task_id, res.status
 
     def parse_arguments(self, cli_args):
         options, arguments = super(Robot, self).parse_arguments(cli_args)
