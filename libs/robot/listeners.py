@@ -4,6 +4,7 @@
 __author__ = 'Tangxing Zhou'
 
 from robot.libraries.BuiltIn import BuiltIn
+import settings
 from libs.reporting.robot_output_xml import *
 from libs.reporting.email_report import *
 
@@ -20,7 +21,7 @@ class Listener2(object):
     ROBOT_LISTENER_API_VERSION = 2
 
     def __init__(self, logger_path=DEFAULT_OUTPUT_PATH):
-        # self.__db = None
+        self.__db = None
         self.__task_id = ''
         self.__email_info = ()
         self.__run_type = 'Smoke'
@@ -93,8 +94,10 @@ class Listener2(object):
             #     for resource_file in files:
             #         BuiltIn().import_resource(os.path.join(root, resource_file).replace('\\', '/'))
             #         self.__report_libs.append(resource_file.split('.')[0])
-            # from run_robot import get_report_database
-            # self.__db = get_report_database(self.__report_db, settings.DATABASES)
+            if not RobotResult.session_init():
+                from run_robot import get_report_database
+                self.__db = get_report_database(self.__report_db, settings.DATABASES)
+                RobotResult(self.__db.session)
 
     def start_test(self, name, attrs):
         """
@@ -262,6 +265,8 @@ class Listener2(object):
         :return:
         """
         execution_id = self.merge_results()
+        if self.__db:
+            self.__db.close()
         self.__execution_subject = self.__execution_subject.format(
             name=' '.join(['[' + self.__project + ']', self.__sub_project]),
             id=execution_id if execution_id else 0,

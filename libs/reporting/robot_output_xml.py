@@ -365,6 +365,14 @@ class RobotResult(object):
         RobotResult.__session = session
 
     @classmethod
+    def session_init(cls):
+        return cls.__session is not None
+
+    @classmethod
+    def close(cls):
+        return cls.__session.close()
+
+    @classmethod
     def parse_results_into_db(cls, output, task_id=str(uuid1())):
         root = ET.ElementTree(file=output).getroot()
         execution_id = cls.add_object(

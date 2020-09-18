@@ -205,8 +205,7 @@ def main():
             else:
                 run_as_worker('celery', '-A', 'libs.celery', 'worker', '-l', 'info')
         else:
-            db = get_report_database(args.database, settings.DATABASES)
-            RobotResult(db.session)
+            RobotResult(get_report_database(args.database, settings.DATABASES).session)
             if args.master_mode:
                 robot = Robot()
                 robot.execute_cli(robot_arguments + unknown)
@@ -244,7 +243,7 @@ def main():
                         pabot_options.append('--verbose')
                     pabot_options.extend(robot_arguments)
                     pabot.main(pabot_options)
-            db.close()
+            RobotResult.close()
 
 
 if __name__ == '__main__':
