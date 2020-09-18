@@ -3,7 +3,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DATABASES = {
-    'default': {
+    'sqlite': {
         'engine': 'libs.databases.sqlite',
         'db': os.path.join(BASE_DIR, 'out', 'robot_results.db')
     },
@@ -14,7 +14,23 @@ DATABASES = {
         'user': 'root',
         'password': '123456',
         'db': 'robot_results'
+    },
+    'mssql': {
+        'engine': 'libs.databases.mssql',
+        'host': '172.26.0.13',
+        'port': 1433,
+        'user': 'SA',
+        'password': 'Transwarp1234',
+        'db': 'robot_results'
     }
+}
+
+EMAIL = {
+    'server': 'smtp.126.com',
+    'user': 'xxx@126.com',
+    'password': 'xxxxxx',
+    'recipients': 'a@126.com,b@126.com',
+    'template': 'resources/reporting/templates/email_report.html'
 }
 
 # https://docs.celeryproject.org/en/stable/userguide/configuration.html#configuration

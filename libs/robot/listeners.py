@@ -3,14 +3,8 @@
 
 __author__ = 'Tangxing Zhou'
 
-import os, sys
-from datetime import datetime, timedelta
-from pytz import timezone
-from robot import rebot
-from robot.api import ExecutionResult
 from robot.libraries.BuiltIn import BuiltIn
-from libs.databases.sqlite import Sqlite
-from libs.reporting import *
+from libs.reporting.robot_output_xml import *
 from libs.reporting.email_report import *
 
 import allure_commons
@@ -25,22 +19,18 @@ DEFAULT_OUTPUT_PATH = os.path.join('out', 'allure')
 class Listener2(object):
     ROBOT_LISTENER_API_VERSION = 2
 
-    def __init__(self, db_type, logger_path=DEFAULT_OUTPUT_PATH):
-        self.__db_type = db_type.upper()
-        self.__db = None
-        self.__db_info = ()
+    def __init__(self, logger_path=DEFAULT_OUTPUT_PATH):
+        # self.__db = None
+        self.__task_id = ''
         self.__email_info = ()
-        self.__run_type= 'Smoke'
-        self.__report_to_db = 'N'
-        self.__merge_results = 'N'
-        self.__send_email_report = 'N'
+        self.__run_type = 'Smoke'
+        self.__report_db = 'sqlite'
+        # self.__merge_results = 'N'
+        # self.__send_email_report = 'N'
         self.__exec_dir = os.path.abspath(__file__)
         self.__project = ''
         self.__sub_project = ''
-        self.__tr_name = ''
-        self.__tr_id = ''
-        self.__ts_id = ''
-        self.__tc_id = ''
+        self.__execution_subject = '{name} - {env} - #{id} - {status}'
         self.__start_time = datetime.now().strftime('%Y-%m-%d %H-%M-%S')
         self.__report_libs = []
         self.__local_host = ''
@@ -75,22 +65,21 @@ class Listener2(object):
         self.listener.start_suite_container(name, attrs)
         if attrs['id'] == 's1':
             self.__exec_dir = BuiltIn().get_variable_value('${EXECDIR}')
+            self.__local_host = BuiltIn().get_variable_value('${LOCAL_HOST}', socket.gethostname())
+            self.__task_id = BuiltIn().get_variable_value('${TASKID}', str(uuid1()))
+            self.__project = BuiltIn().get_variable_value('${Project}')
+            self.__sub_project = BuiltIn().get_variable_value('${Sub_Project}')
             env_name = BuiltIn().get_variable_value('${ENV}', 'QA').upper()
             BuiltIn().set_suite_variable('${ENV}', env_name)
             int_or_ext = BuiltIn().get_variable_value('${IntExt}', 'Internal')
             browser = BuiltIn().get_variable_value('${Browser}', 'Chrome')
             self.__run_type = BuiltIn().get_variable_value('${RunType}', 'Smoke')
-            self.__report_to_db = BuiltIn().get_variable_value('${ReportToDB}', 'N')
-            self.__merge_results = BuiltIn().get_variable_value('${MergeResults}', 'N')
-            self.__send_email_report = BuiltIn().get_variable_value('${SendEmail}', 'N')
+            self.__report_db = BuiltIn().get_variable_value('${ReportDB}', 'sqlite')
+            # self.__merge_results = BuiltIn().get_variable_value('${MergeResults}', 'Y')
+            # self.__send_email_report = BuiltIn().get_variable_value('${SendEmail}', 'N')
             self.__start_time = datetime.strptime(attrs['starttime'], '%Y%m%d %H:%M:%S.%f')
+            self.__execution_subject = ' - '.join(['{name}', env_name, '#{id}', '{status}'])
             BuiltIn().import_variables('${EXECDIR}/resources/${Project}/variables.py')
-            self.__db_info = tuple(map(BuiltIn().get_variable_value, map(lambda x: '${' + self.__db_type + '_' + x + '}',
-                                                                  ('HOST', 'USER', 'PSW', 'DB', 'PORT'))))
-            self.__email_info = tuple(map(BuiltIn().get_variable_value,
-                                          map(lambda x: '${' + 'EMAIL_' + x + '}',
-                                              ('SERVER', 'SENDER_ACCOUNT', 'SENDER_PSW', 'RECEIVERS'))))
-            self.__local_host = BuiltIn().get_variable_value('${LOCAL_HOST}', '')
             # BuiltIn().import_library(
             #     'libraries/TOS/ClientConfig.py',
             #     'host={}'.format(
@@ -99,17 +88,13 @@ class Listener2(object):
             # )
             for k in self.__build.keys():
                 self.__build[k] = BuiltIn().get_variable_value('${BUILD_' + k.upper() + '}')
-            keywords_dir = os.path.join('resources', self.__project, self.__sub_project, 'keywords')
-            for root, dirs, files in os.walk(keywords_dir):
-                for resource_file in files:
-                    BuiltIn().import_resource(os.path.join(root, resource_file).replace('\\', '/'))
-                    self.__report_libs.append(resource_file.split('.')[0])
-            if self.__report_to_db == 'Y':
-                self.__db = None
-                if self.__db is not None:
-                    self.__tr_name = '{project}-{sub_project}-{env}-{start_time}'.\
-                        format(project=self.__project, sub_project=self.__sub_project, env=env_name,
-                               start_time=self.__start_time.strftime('%Y-%m-%d %H-%M-%S'))
+            # keywords_dir = os.path.join('resources', self.__project, self.__sub_project, 'keywords')
+            # for root, dirs, files in os.walk(keywords_dir):
+            #     for resource_file in files:
+            #         BuiltIn().import_resource(os.path.join(root, resource_file).replace('\\', '/'))
+            #         self.__report_libs.append(resource_file.split('.')[0])
+            # from run_robot import get_report_database
+            # self.__db = get_report_database(self.__report_db, settings.DATABASES)
 
     def start_test(self, name, attrs):
         """
@@ -276,191 +261,36 @@ class Listener2(object):
         Called when the whole test execution ends.
         :return:
         """
-        if self.__report_to_db == 'Y':
-            verbose_stream = sys.stdout
-            verbose_stream.write('{0:*^78}\n'.format('Merge Results For ' + self.__project))
-            if self.__merge_results == 'Y':
-                project_output = [
-                    os.path.join(root, file)
-                    for root, dirs, files in os.walk(os.path.join(self.__exec_dir, 'out', self.__project))
-                    for file in files
-                    if file in ('output.xml', 'rerun.xml') and root != os.path.join(self.__exec_dir, 'out', self.__project)
-                ]
-                execution_results = [ExecutionResult(xml_file) for xml_file in project_output]
-                execution_results_starttime = [
-                    datetime.strptime(execution_result.suite.starttime, '%Y%m%d %H:%M:%S.%f')
-                    for execution_result in execution_results
-                ]
-                execution_results_endtime = [
-                    datetime.strptime(execution_result.suite.endtime, '%Y%m%d %H:%M:%S.%f')
-                    for execution_result in execution_results
-                ]
-                rebot(
-                    *project_output, name=self.__project, log='log', output='output', stdout=sys.stdout,
-                    outputdir=os.path.join(self.__exec_dir, 'out'),
-                    starttime=min(execution_results_starttime).strftime('%Y%m%d %H:%M:%S.%f')[:-3],
-                    endtime=max(execution_results_endtime).strftime('%Y%m%d %H:%M:%S.%f')[:-3]
-                )
-            else:
-                xml_file = os.path.join(self.__exec_dir, 'out', self.__project, self.__sub_project, 'output.xml')
-                rebot(
-                    xml_file, output='output', stdout=sys.stdout,
-                    outputdir=os.path.join(self.__exec_dir, 'out'),
-                    starttime=ExecutionResult(xml_file).suite.starttime,
-                    endtime=ExecutionResult(xml_file).suite.endtime
-                )
-            output_xml_path = os.path.join(self.__exec_dir, 'out', 'output.xml')
-            _sqlite = Sqlite(os.path.join(self.__exec_dir, 'out', self.__project, 'robot_results.db'), verbose_stream)
-            _sqlite_writer = DatabaseWriter(_sqlite.connection, verbose_stream)
-            _robot_result_parser = RobotResultsParser(_sqlite_writer, verbose_stream)
-
-            def format_duration(duration):
-                return (datetime.strptime('00:00:00.000000', '%H:%M:%S.%f') + timedelta(milliseconds=duration)). \
-                           strftime('%H:%M:%S.%f')[:-3]
-
-            def dict_add(this, other):
-                new_ = this
-                for k, v in other.items():
-                    new_[k] = v
-                return new_
-
-            def get_statistics(samples):
-                statistics_total, statistics_passed, statistics_failed = 0, 0, 0
-                for sample in samples:
-                    if hasattr(sample, 'status'):
-                        if sample.status == 'PASS':
-                            statistics_passed += 1
-                        else:
-                            statistics_failed += 1
-                    elif hasattr(sample, 'passed'):
-                        if sample.passed == 1:
-                            statistics_passed += 1
-                        else:
-                            statistics_failed += 1
-                statistics_total = statistics_passed + statistics_failed
-                return type('new_dict', (dict,), {'__add__': dict_add})(
-                    total=statistics_total,
-                    passed=statistics_passed,
-                    failed=statistics_failed,
-                    passed_percentage=round(statistics_passed / statistics_total * 100),
-                    failed_percentage=100 - round(statistics_passed / statistics_total * 100)
-                )
-
-            robot_build, all_statistics, tags_statistics, suites_statistics, tests_statistics = {}, [], [], [], []
-            try:
-                self.__tr_id = _robot_result_parser.xml_to_db(output_xml_path)
-                _sqlite_writer.commit()
-                for test in _robot_result_parser.get_tests_of_test_run(self.__tr_id):
-                    self.__ts_id = test[1]
-                    self.__tc_id = test[0]
-                    for test_keyword in _robot_result_parser.get_keywords_of_test(self.__tr_id, self.__tc_id):
-                        # TODO:
-                        pass
-                test_run_status = _sqlite_writer.fetch_records(TestRunStatus,
-                                                               test_run_id=self.__tr_id, name='All Tests')[0]
-                test_run = _sqlite_writer.fetch_records(TestRuns, id=self.__tr_id)[0]
-                robot_build = dict(
-                    host=self.__local_host,
-                    project=self.__project.upper(),
-                    id=self.__tr_id,
-                    name=self.__sub_project if self.__sub_project else test_run_status.name,
-                    url=test_run.source_file,
-                    date=datetime.strptime(test_run.started_at, '%Y-%m-%d %H:%M:%S.%f').
-                        replace(tzinfo=timezone('Asia/Shanghai')).strftime('%a, %d %b %Y %H:%M:%S %z'),
-                    duration=format_duration(test_run_status.elapsed),
-                    result='SUCCESS' if test_run_status.passed == 1 else 'FAILURE'
-                )
-                all_statistics = [
-                    get_statistics(_sqlite_writer.fetch_records(TestStatus, test_run_id=self.__tr_id)) +
-                    {'name': status.name, 'duration': format_duration(status.elapsed)}
-                    for status in _sqlite_writer.fetch_records(TestRunStatus, test_run_id=self.__tr_id)
-                ]
-                suites_statistics = [
-                    get_statistics(
-                        [
-                            _sqlite_writer.fetch_records(TestStatus, test_run_id=self.__tr_id, test_id=test.id)[0]
-                            for test in tests[0]
-                        ]
-                    ) +
-                    {
-                        'name': '.'.join(
-                            [
-                                getattr(_sqlite_writer.fetch_records(Suites, id=tests[1].suite_id)[0], k)
-                                for k in ('parent_suite', 'name')
-                            ]
-                        ),
-                        'duration': format_duration(tests[1].elapsed)
-                    }
-                    for tests in
-                    [
-                        suite_tests for suite_tests in
-                        [
-                            (_sqlite_writer.fetch_records(Tests, suite_id=status.suite_id), status)
-                            for status in _sqlite_writer.fetch_records(SuiteStatus, test_run_id=self.__tr_id)
-                        ]
-                        if suite_tests[0]
-                    ]
-                ]
-                tags_statistics = [
-                    {
-                        'name': status.name,
-                        'total': status.passed + status.failed,
-                        'passed': status.passed,
-                        'failed': status.failed,
-                        'duration': format_duration(status.elapsed),
-                        'passed_percentage': round(status.passed / (status.passed + status.failed) * 100),
-                        'failed_percentage': 100 - round(status.passed / (status.passed + status.failed) * 100)
-                    }
-                    for status in _sqlite_writer.fetch_records(TestTagStatus, test_run_id=self.__tr_id)
-                ]
-                tests_statistics = [
-                    {
-                        'name': _sqlite_writer.fetch_records(Tests, id=status.test_id)[0].name,
-                        'duration': format_duration(status.elapsed),
-                        'status': status.status
-                    }
-                    for status in _sqlite_writer.fetch_records(TestStatus, test_run_id=self.__tr_id)
-                ]
-            except Exception as e:
-                sys.stderr.write('[Sqlite ERROR]: {}\n'.format(e))
-                exit(1)
-            finally:
-                _sqlite_writer.close()
-                # self.__db.close()
-            if self.__send_email_report == 'Y':
-                email_client = EmailReport(*self.__email_info)
-                if email_client.ready:
-                    build = robot_build
-                else:
-                    build = dict(
-                        host=self.__local_host,
-                        project=self.__project.upper(),
-                        **self.__build
-                    )
-                try:
-                    email_content = EmailReport.render(
-                        email_template_file='resources/reporting/templates/email_report.html',
-                        out_email_file=os.path.join(self.__exec_dir, 'out', self.__project, 'email_report.html'),
-                        build=build,
-                        statistics=(
-                            {'title': 'Total Statistics', 'records': all_statistics},
-                            {'title': 'Statistics by Tag', 'records': tags_statistics},
-                            {'title': 'Statistics by Suite', 'records': suites_statistics}
-                        ),
-                        tests=tests_statistics
-                    )
-                    email_client.send(
-                        subject='[{project}] {name} - #{id} - {result}'.format(**build),
-                        content=email_content
-                    )
-                except Exception as e:
-                    sys.stderr.write('[Email ERROR]: {}\n'.format(e))
-                    exit(1)
-                finally:
-                    email_client.quit()
+        execution_id = self.merge_results()
+        self.__execution_subject = self.__execution_subject.format(
+            name=' '.join(['[' + self.__project + ']', self.__sub_project]),
+            id=execution_id if execution_id else 0,
+            status='SUCCESS'
+        )
         for plugin in [self.logger, self.listener]:
             name = allure_commons.plugin_manager.get_name(plugin)
             allure_commons.plugin_manager.unregister(name=name)
+
+    def merge_results(self):
+        output_dir = os.path.join(self.__exec_dir, 'out', self.__project, self.__sub_project)
+        sys.stdout.write('{0:=^78}\n'.format('Merge Results For ' + self.__project))
+        if os.path.isfile(os.path.join(output_dir, 'rerun.xml')):
+            project_output = [os.path.join(output_dir, file) for file in ('output.xml', 'rerun.xml')]
+            end_time = ExecutionResult(os.path.join(output_dir, 'rerun.xml')).suite.endtime
+        else:
+            project_output = [os.path.join(output_dir, file) for file in ('output.xml',)]
+            end_time = ExecutionResult(os.path.join(output_dir, 'output.xml')).suite.endtime
+        start_time = ExecutionResult(os.path.join(output_dir, 'output.xml')).suite.starttime
+        rebot(
+            *project_output, name=self.__project, log='log', output='output', xunit='xunit', stdout=sys.stdout,
+            outputdir=os.path.join(self.__exec_dir, 'out'),
+            starttime=start_time,
+            endtime=end_time
+        )
+        return RobotResult.merge_results_into_db(
+            os.path.join(self.__exec_dir, 'out', 'output.xml'),
+            self.__task_id
+        )
 
 
 class Listener3(object):

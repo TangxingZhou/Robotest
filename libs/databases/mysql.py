@@ -15,6 +15,7 @@ class Mysql(Database):
             host = kwargs.pop('host', 'localhost')
             port = kwargs.pop('port', 3306)
             db = kwargs.pop('db')
+            kwargs.pop('engine')
         except KeyError as e:
             raise Exception('[DataBase Access Error]: "{}" is not set for mysql connection.'.format(e))
         self._engine = create_engine('mysql+mysqldb://{}:{}@{}:{}/{}'.format(user, password, host, port, db), **kwargs)

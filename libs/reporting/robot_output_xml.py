@@ -1,7 +1,10 @@
 import sys
 import os
+import socket
 from uuid import uuid1
 from datetime import datetime
+from datetime import timedelta
+from pytz import timezone
 from robot import rebot
 from robot.api import ExecutionResult
 import xml.etree.ElementTree as ET
@@ -205,7 +208,8 @@ class Test(Base):
         if self.timeout:
             timeout = ET.Element('timeout', {'value': self.timeout})
             elem.append(timeout)
-        status = ET.Element('status', {'status': self.status, 'starttime': self.starttime, 'endtime': self.endtime, 'critical': self.critical})
+        status = ET.Element('status', {'status': self.status, 'starttime': self.starttime, 'endtime': self.endtime,
+                                       'critical': self.critical})
         if self.msg:
             status.text = self.msg
         elem.append(status)
@@ -399,9 +403,8 @@ class RobotResult(object):
         project_output = []
         suites_starttime = []
         suites_endtime = []
-        for task_id in task_ids:
-            execution = cls.__session.query(Execution).filter(Execution.taskid == task_id).first()
-            out_xml = os.path.join(output_dir, '{}.xml'.format(task_id))
+        for execution in cls.__session.query(Execution).filter(Execution.taskid.in_(task_ids)).all():
+            out_xml = os.path.join(output_dir, '{}.xml'.format(execution.taskid))
             ET.ElementTree(execution.to_xml_element()).write(out_xml, xml_declaration=True, encoding='UTF-8')
             project_output.append(out_xml)
             for suite in execution.suites:
@@ -415,6 +418,70 @@ class RobotResult(object):
         )
 
     @classmethod
+    def retrieve_report(cls, output_dir, project, sub_project='', execution_id=''):
+        execution_result = ExecutionResult(os.path.join(output_dir, 'out', 'output.xml'), include_keywords=True)
+
+        def dict_add(this, other):
+            new_ = this
+            for k, v in other.items():
+                new_[k] = v
+            return new_
+
+        def get_statistics(stat):
+            return type('new_dict', (dict,), {'__add__': dict_add})(
+                name=stat.name,
+                duration=(datetime.strptime('00:00:00.000000', '%H:%M:%S.%f') + timedelta(
+                    milliseconds=stat.elapsed)).strftime('%H:%M:%S.%f')[:-3],
+                total=stat.total,
+                passed=stat.passed,
+                failed=stat.failed,
+                passed_percentage=round(stat.passed / stat.total * 100),
+                failed_percentage=100 - round(stat.passed / stat.total * 100)
+            )
+        if execution_result.suite.status == 'PASS':
+            robot_result = 'SUCCESS'
+        elif execution_result.suite.status == 'FAIL':
+            robot_result = 'FAILURE'
+        else:
+            robot_result = 'UNSTABLE'
+        if execution_result.suite.elapsedtime > 0:
+            robot_duration = (datetime.strptime('00:00:00.000000', '%H:%M:%S.%f') + timedelta(
+                        milliseconds=execution_result.suite.elapsedtime)).strftime('%H:%M:%S.%f')[:-3]
+        else:
+            robot_duration = '00:00:00.000'
+        robot_build = dict(
+            host=socket.gethostname(),
+            project=project.upper(),
+            id=execution_id,
+            name=sub_project if sub_project else project,
+            url=execution_result.suite.source if execution_result.suite.source else
+            os.path.join(output_dir, project, sub_project),
+            date=datetime.now().replace(tzinfo=timezone('Asia/Shanghai')).strftime('%a, %d %b %Y %H:%M:%S %z'),
+            duration=robot_duration,
+            result=robot_result
+        )
+        all_statistics = [get_statistics(stat) for stat in execution_result.statistics.total]
+        suites_statistics = [get_statistics(stat) for stat in execution_result.statistics.suite]
+        tags_statistics = [get_statistics(stat) for stat in execution_result.statistics.tags]
+        tests_statistics = []
+
+        def collect_tests(suite):
+            for test in suite.tests:
+                tests_statistics.append(
+                    {
+                        'name': test.name,
+                        'duration': (datetime.strptime('00:00:00.000000', '%H:%M:%S.%f') + timedelta(
+                            milliseconds=execution_result.suite.elapsedtime)).strftime('%H:%M:%S.%f')[:-3],
+                        'status': test.status
+                    }
+                )
+            for sub_suite in suite.suites:
+                collect_tests(sub_suite)
+
+        collect_tests(execution_result.suite)
+        return robot_build, all_statistics, suites_statistics, tags_statistics, tests_statistics
+
+    @classmethod
     def retrieve_results_into_output(cls, output_dir, task_id):
         execution = cls.__session.query(Execution).filter(Execution.taskid == task_id).first()
         out_xml = os.path.join(output_dir, '{}.xml'.format(task_id))
@@ -425,6 +492,13 @@ class RobotResult(object):
         for child in cls.__session.query(table).filter(table.parent_id.isnot(None), table.parent_id == parent_id).all():
             child_elem = child.to_xml_element()
             parent.append(child_elem)
+
+    @classmethod
+    def retrieve_executions_id(cls, *tasks_id):
+        return [
+            execution.id
+            for execution in cls.__session.query(Execution).filter(Execution.taskid.in_(tasks_id)).all()
+        ]
 
     @classmethod
     def add_object(cls, cla, *args, **kwargs):
@@ -741,21 +815,6 @@ class RobotResult(object):
         for sub_kw in kw.keywords:
             cls.parse_kw(sub_kw, None, None, kw_id)
 
-# __all__ = [
-#     Execution,
-#     ExecutionError,
-#     SuiteStatistics,
-#     TestStatistics,
-#     TagStatistics,
-#     Suite,
-#     Test,
-#     TestTag,
-#     Keyword,
-#     Argument,
-#     Assign,
-#     Message
-# ]
-
 
 if __name__ == '__main__':
     mysql_engine = create_engine('mysql+mysqldb://root:123456@172.26.0.13:3306/robot', echo=False)
@@ -765,4 +824,4 @@ if __name__ == '__main__':
     Base.metadata.create_all(engine)
     db_results = RobotResult(session)
     db_results.merge_results_into_db('/home/transwarp/Projects/python/robot/out/Demo/output.xml')
-    db_results.retrieve_results_into_output('/home/transwarp/Projects/python/robot/out', '5a1c9080-f19a-11ea-934d-8f994452f05e')
+    db_results.retrieve_executions('/home/transwarp/Projects/python/robot/out', 'test', '5a1c9080-f19a-11ea-934d-8f994452f05e')
