@@ -89,21 +89,18 @@ class Robot(RobotFramework):
                 if test_id:
                     suite_relpath = os.path.relpath(suite.source, EXEC_DIR)
                     project, sub_project = get_project_info_from_suite_source(suite_relpath)
-                    task_id = str(uuid1())
                     arguments = self.__robot_args + [
                         '--variable', 'Project:{}'.format(project),
                         '--variable', 'Sub_Project:{}'.format(sub_project),
                         '--outputdir', os.path.join('out', project, sub_project),
                         '--prerunmodifier',
                         '{}:{}'.format('libs.robot.prerun.Modifier', int(test_id.groups()[0]) - 1),
-                        '--variable', 'TASKID:{}'.format(task_id),
                         suite_relpath
                     ]
-                    # TODO
                     # celery_taskmeta
-                    self.tasks_id.append(task_id)
                     res = run_test.delay(arguments)
                     # res.task_id, res.status
+                    self.tasks_id.append(res.task_id)
 
     def parse_arguments(self, cli_args):
         options, arguments = super(Robot, self).parse_arguments(cli_args)
@@ -194,10 +191,6 @@ def main():
         sys.exit(1)
     else:
         args, unknown = parser.parse_known_args()
-        project, sub_project = get_project_info_from_suite_source(unknown[-1])
-        robot_output_dir = os.path.join('out', project, sub_project)
-        shutil.rmtree(robot_output_dir)
-        robot_arguments.extend(['--variable', 'ReportDB:'+args.database])
         if args.worker_mode:
             if args.master_mode:
                 raise argparse.ArgumentError(
@@ -207,12 +200,19 @@ def main():
             else:
                 run_as_worker('celery', '-A', 'libs.celery', 'worker', '-l', 'info')
         else:
+            project, sub_project = get_project_info_from_suite_source(unknown[-1])
+            robot_output_dir = os.path.join('out', project, sub_project)
+            if os.path.isdir(robot_output_dir):
+                shutil.rmtree(robot_output_dir)
+            robot_arguments.extend(['--variable', 'ReportDB:' + args.database])
             RobotResult(get_report_database(args.database, settings.DATABASES).session)
             if args.master_mode:
                 robot = Robot()
-                robot.execute_cli(robot_arguments + unknown)
+                rc = robot.execute_cli(robot_arguments + unknown, False)
+                # TODO: Wait for all tasks to finish
                 send_email_report(project, sub_project,
                                   *RobotResult.retrieve_executions_id(*robot.tasks_id))
+                sys.exit(rc)
             else:
                 robot_arguments.extend([
                     '--variable', 'Project:{}'.format(project),

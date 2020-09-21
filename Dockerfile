@@ -11,7 +11,9 @@ RUN \
     sed -i 's/\/\/[^\/]*/\/\/mirrors.aliyun.com/g' /etc/apk/repositories \
     && apk --no-cache update \
     && apk --no-cache upgrade \
-    && apk --no-cache add gcc libffi-dev openssh openssl-dev make sqlite sqlite-dev mysql-dev unixodbc-dev build-base bash sshpass curl git \
+    && apk --no-cache add gcc libffi-dev openssh openssl-dev make sqlite sqlite-dev mysql-dev unixodbc-dev build-base tzdata bash sshpass curl git \
+    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
     && mkdir -p /root/.ssh \
     && echo "StrictHostKeyChecking accept-new" > /root/.ssh/config \
     && pip install -r /tmp/requirements.txt \
