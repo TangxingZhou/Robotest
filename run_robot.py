@@ -62,6 +62,8 @@ class CeleryRobot(RobotFramework):
         super(CeleryRobot, self).__init__()
         self.__robot_args = []
         self.tasks = []
+        self.runs = {}
+        self.rerun_tasks = []
 
     def main(self, datasources, **options):
         settings = RobotSettings(options)
@@ -96,20 +98,37 @@ class CeleryRobot(RobotFramework):
                         suite_relpath
                     ]
                     # celery_taskmeta
-                    self.tasks.append(run_test.delay(arguments))
+                    task = run_test.delay(arguments)
+                    self.runs[task.task_id] = arguments
+                    self.tasks.append(task)
 
     def parse_arguments(self, cli_args):
         options, arguments = super(CeleryRobot, self).parse_arguments(cli_args)
         self.__robot_args = cli_args[:-len(arguments)]
         return options, arguments
 
-    def wait_tasks_finish(self):
+    def wait_tasks_finish(self, rerun=False):
         for task in self.tasks:
-            task.get()
+            rc = task.get()
+            if rc != 0 and rerun:
+                rerun_arguments = self.runs[task.task_id]
+                options, arguments = self.parse_arguments(rerun_arguments)
+                rerun_options = [
+                    '--nostatusrc',
+                    '--rerunfailed', os.path.join(options['outputdir'], 'output.xml'),
+                    '--output', 'rerun',
+                    '--log', 'rerun',
+                    '--report', 'rerun'
+                ]
+                if '--debugfile' in rerun_arguments:
+                    rerun_arguments[rerun_arguments.index('--debugfile') + 1] = 'rerun.log'
+                self.rerun_tasks.append(run_test.delay(rerun_options + rerun_arguments))
+        for rerun_task in self.rerun_tasks:
+            rerun_task.get()
 
     @property
     def tasks_id(self):
-        return [task.task_id for task in self.tasks]
+        return [task.task_id for task in self.tasks + self.rerun_tasks]
 
 
 def get_report_database(name, database):
@@ -213,7 +232,7 @@ def main():
             if args.master_mode:
                 celery_robot = CeleryRobot()
                 rc = celery_robot.execute_cli(robot_arguments + unknown, False)
-                celery_robot.wait_tasks_finish()
+                celery_robot.wait_tasks_finish(args.rerun)
                 send_email_report(project, sub_project,
                                   *RobotResult.retrieve_executions_id(*celery_robot.tasks_id))
                 sys.exit(rc)
