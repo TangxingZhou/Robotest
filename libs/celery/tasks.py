@@ -11,4 +11,4 @@ def run_test(arguments):
         arg = arg.replace('\\', os.path.sep)
         arg = arg.replace('/', os.path.sep)
         arguments[index] = os.path.normpath(arg)
-    return run_cli(arguments, exit=False)
+    return run_cli(['--variable', 'TASKID:' + run_test.request.id] + arguments, exit=False)
