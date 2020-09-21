@@ -356,21 +356,21 @@ class Message(Base):
         return msg
 
 
-class CeleryResult(Base):
-    __tablename__ = 'celery_taskmeta'
-
-    id = Column(Integer, primary_key=True)
-    task_id = Column(String(155), unique=True)
-    status = Column(String(50))
-    result = Column(BLOB)
-    date_done = Column(DateTime)
-    traceback = Column(Text)
-    name = Column(String(155))
-    args = Column(BLOB)
-    kwargs = Column(BLOB)
-    worker = Column(String(155))
-    retries	 = Column(Integer)
-    queue = Column(String(155))
+# class CeleryResult(Base):
+#     __tablename__ = 'celery_taskmeta'
+#
+#     id = Column(Integer, primary_key=True)
+#     task_id = Column(String(155), unique=True)
+#     status = Column(String(50))
+#     result = Column(BLOB)
+#     date_done = Column(DateTime)
+#     traceback = Column(Text)
+#     name = Column(String(155))
+#     args = Column(BLOB)
+#     kwargs = Column(BLOB)
+#     worker = Column(String(155))
+#     retries = Column(Integer)
+#     queue = Column(String(155))
 
 
 class RobotResult(object):

@@ -35,11 +35,15 @@ EMAIL = {
 
 # https://docs.celeryproject.org/en/stable/userguide/configuration.html#configuration
 CELERY_CONFIG = {
-    'broker_url': 'amqp://guest@172.26.0.13:5672',
-    'result_backend': 'db+mysql://root:123456@172.26.0.13:3306/tests',
+    # 'broker_url': 'amqp://myuser:mypassword@hostname:5672/myvhost',
+    # 'broker_url': 'amqp://guest@172.26.0.13:5672',
+    # 'broker_url': 'redis://:password@hostname:6379/db_number',
+    'broker_url': 'redis://172.26.0.13:6379',
+    'result_backend': 'redis://172.26.0.13:6379',
+    # 'result_backend': 'db+mysql://root:123456@172.26.0.13:3306/tests',
     'task_serializer':'json',
     'result_serializer': 'json',
     'accept_content': ['application/json'],
     'timezone': 'Asia/Shanghai',
-    'enable_utc': True
+    'enable_utc': False
 }

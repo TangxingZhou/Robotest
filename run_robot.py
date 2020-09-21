@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import os
-import sys
 import shutil
 import argparse
 import re
@@ -58,12 +56,12 @@ def get_project_info_from_suite_source(suite_source):
     return project, sub_project
 
 
-class Robot(RobotFramework):
+class CeleryRobot(RobotFramework):
 
     def __init__(self):
-        super(Robot, self).__init__()
+        super(CeleryRobot, self).__init__()
         self.__robot_args = []
-        self.tasks_id = []
+        self.tasks = []
 
     def main(self, datasources, **options):
         settings = RobotSettings(options)
@@ -98,14 +96,20 @@ class Robot(RobotFramework):
                         suite_relpath
                     ]
                     # celery_taskmeta
-                    res = run_test.delay(arguments)
-                    # res.task_id, res.status
-                    self.tasks_id.append(res.task_id)
+                    self.tasks.append(run_test.delay(arguments))
 
     def parse_arguments(self, cli_args):
-        options, arguments = super(Robot, self).parse_arguments(cli_args)
+        options, arguments = super(CeleryRobot, self).parse_arguments(cli_args)
         self.__robot_args = cli_args[:-len(arguments)]
         return options, arguments
+
+    def wait_tasks_finish(self):
+        for task in self.tasks:
+            task.get()
+
+    @property
+    def tasks_id(self):
+        return [task.task_id for task in self.tasks]
 
 
 def get_report_database(name, database):
@@ -207,11 +211,11 @@ def main():
             robot_arguments.extend(['--variable', 'ReportDB:' + args.database])
             RobotResult(get_report_database(args.database, settings.DATABASES).session)
             if args.master_mode:
-                robot = Robot()
-                rc = robot.execute_cli(robot_arguments + unknown, False)
-                # TODO: Wait for all tasks to finish
+                celery_robot = CeleryRobot()
+                rc = celery_robot.execute_cli(robot_arguments + unknown, False)
+                celery_robot.wait_tasks_finish()
                 send_email_report(project, sub_project,
-                                  *RobotResult.retrieve_executions_id(*robot.tasks_id))
+                                  *RobotResult.retrieve_executions_id(*celery_robot.tasks_id))
                 sys.exit(rc)
             else:
                 robot_arguments.extend([
