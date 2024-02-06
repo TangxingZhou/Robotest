@@ -1,5 +1,5 @@
 
-from libs.apis import Configuration, ApiClient, request
+from libs.apis import Configuration, ApiClient, k8s_api_request
 
 
 class V1Api(object):
@@ -13,6 +13,6 @@ class V1Api(object):
             api_client = ApiClient(customized_configuration)
         self.api_client = api_client
 
-    @request('/api/v1/namespaces/{name}', 'GET', 'name')
-    def get_namespace(self, **kwargs):
+    @k8s_api_request('/api/v1/namespaces/{name}', 'GET', 'V1Namespace')
+    def get_namespace(self, name, **kwargs):
         pass

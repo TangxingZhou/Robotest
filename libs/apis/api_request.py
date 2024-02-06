@@ -1,93 +1,114 @@
-import re
-from json import loads, JSONDecodeError
+from __future__ import absolute_import
+
+import six
+import logging
 import functools
-from six import iteritems
-from .rest import ApiException
+from json import loads, JSONDecodeError
+from urllib3.response import HTTPResponse
+from kubernetes.client import ApiClient
+from kubernetes.client.exceptions import (
+    ApiTypeError,
+    ApiValueError,
+    ApiException
+)
 
 
-def request(url, method, *request_params):
+logger = logging.getLogger(__name__)
+
+
+def k8s_api_request(url, method: str, response_type=None, *extra_params):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            all_params = list(args[1:])
-            all_params.extend(list(request_params))
-            all_params.append('async_req')
-            all_params.append('_return_http_data_only')
-            all_params.append('_preload_content')
-            all_params.append('_request_timeout')
-            params = locals()
-            api_client = args[0].api_client
-            del params['args']
+            local_var_params = locals()
+            api_client: ApiClient = args[0].api_client
 
-            required = list()
-            for path in re.findall(r'\{(\w*)\}', url):
-                required.append(path)
-            query = list(filter(lambda p: p not in required + ['body'], request_params))
+            all_params = list(extra_params)
+            all_params.extend(
+                [
+                    'async_req',
+                    '_return_http_data_only',
+                    '_preload_content',
+                    '_request_timeout'
+                ]
+            )
 
-            for key, val in iteritems(params['kwargs']):
+            for key, val in six.iteritems(local_var_params['kwargs']):
                 if key not in all_params:
-                    raise TypeError("Got an unexpected keyword argument '{}' to method {}".format(key, func.__name__))
-                params[key] = val
-            del params['kwargs']
+                    raise ApiTypeError(
+                        f"Got an unexpected keyword argument '{key}' to method {func.__name__}"
+                    )
+                local_var_params[key] = val
+            del local_var_params['kwargs']
 
             collection_formats = {}
 
             # verify the required parameters are set
             path_params = {}
-            for param in required:
-                if (param not in params) or (params[param] is None):
-                    raise ValueError("Missing the required parameter `{}` when calling `{}`".format(param, func.__name__))
+            body_params = None
+            for index, param in enumerate(func.__code__.co_varnames[1:-1]):
+                if index >= len(args) - 1 or args[index + 1] is None:
+                    if api_client.client_side_validation:
+                        raise ApiValueError(f"Missing the required parameter `{param}` when calling `{func.__name__}`")
                 else:
-                    path_params[param] = params[param]
+                    if param == 'body':
+                        body_params = args[index + 1]
+                    else:
+                        path_params[param] = args[index + 1]
+            del local_var_params['args']
 
             query_params = []
-            for param in query:
-                if param in params:
-                    query_params.append((param, params[param]))
+            for param in extra_params:
+                if param in local_var_params and local_var_params[param] is not None:
+                    query_params.append((param, local_var_params[param]))
 
             header_params = {}
             form_params = []
             local_var_files = {}
 
-            body_params = None
-            if 'body' in params:
-                body_params = params['body']
-
             # HTTP header `Accept`
-            header_params['Accept'] = api_client.select_header_accept(['*/*'])
+            header_params['Accept'] = api_client.select_header_accept(
+                ['application/json', 'application/yaml', 'application/vnd.kubernetes.protobuf'])
 
             # HTTP header `Content-Type`
-            header_params['Content-Type'] = api_client.select_header_content_type(['application/json'])
+            if method.lower() == 'patch':
+                header_params['Content-Type'] = api_client.select_header_content_type(
+                    ['application/json-patch+json', 'application/merge-patch+json',
+                     'application/strategic-merge-patch+json', 'application/apply-patch+yaml'])
 
             # Authentication setting
             auth_settings = ['BearerToken']
 
-            headers = {}
+            # response_headers = {}
             try:
-                response = api_client.call_api(url, method,
-                                               path_params,
-                                               query_params,
-                                               header_params,
-                                               body=body_params,
-                                               post_params=form_params,
-                                               files=local_var_files,
-                                               response_type=None,
-                                               auth_settings=auth_settings,
-                                               async_req=params.get('async_req'),
-                                               _return_http_data_only=params.get('_return_http_data_only'),
-                                               _preload_content=params.get('_preload_content', False),
-                                               _request_timeout=params.get('_request_timeout'),
-                                               collection_formats=collection_formats)
-                response = (response[0].data, response[1], response[2])
+                response = api_client.call_api(
+                    url, method,
+                    path_params,
+                    query_params,
+                    header_params,
+                    body=body_params,
+                    post_params=form_params,
+                    files=local_var_files,
+                    response_type=response_type,
+                    auth_settings=auth_settings,
+                    async_req=local_var_params.get('async_req'),
+                    _return_http_data_only=local_var_params.get('_return_http_data_only'),
+                    _preload_content=local_var_params.get('_preload_content',  True if response_type else False),
+                    _request_timeout=local_var_params.get('_request_timeout'),
+                    collection_formats=collection_formats)
+                if isinstance(response[0], HTTPResponse):
+                    response = [response[0].data, response[1], response[2]]
             except ApiException as e:
-                response = (e.body, e.status, e.headers)
-            for k, v in response[2].iteritems():
-                headers[k] = v
-            try:
-                response_body = loads(response[0].decode('utf-8'))
-            except JSONDecodeError as e:
-                response_body = response[0].decode('utf-8')
-            return response_body, response[1], headers
+                response = [e.body, e.status, e.headers]
+            if isinstance(response[0], bytes):
+                response[0] = response[0].decode('utf-8')
+            if isinstance(response[0], str):
+                try:
+                    response[0] = loads(response[0])
+                except JSONDecodeError as e:
+                    logger.debug(e.msg)
+            func(*args, **kwargs)
+            return tuple(response)
         return wrapper
     return decorator
 
