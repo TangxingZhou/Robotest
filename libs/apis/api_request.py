@@ -73,7 +73,7 @@ def k8s_api_request(url, method: str, response_type=None, *extra_params):
             # HTTP header `Content-Type`
             if method.lower() == 'patch':
                 header_params['Content-Type'] = api_client.select_header_content_type(
-                    ['application/json-patch+json', 'application/merge-patch+json',
+                    ['application/merge-patch+json', 'application/json-patch+json',
                      'application/strategic-merge-patch+json', 'application/apply-patch+yaml'])
 
             # Authentication setting
@@ -96,8 +96,11 @@ def k8s_api_request(url, method: str, response_type=None, *extra_params):
                     _preload_content=local_var_params.get('_preload_content',  True if response_type else False),
                     _request_timeout=local_var_params.get('_request_timeout'),
                     collection_formats=collection_formats)
-                if isinstance(response[0], HTTPResponse):
-                    response = [response[0].data, response[1], response[2]]
+                if local_var_params.get('_return_http_data_only'):
+                    return response
+                else:
+                    if isinstance(response[0], HTTPResponse):
+                        response = [response[0].data, response[1], response[2]]
             except ApiException as e:
                 response = [e.body, e.status, e.headers]
             if isinstance(response[0], bytes):
