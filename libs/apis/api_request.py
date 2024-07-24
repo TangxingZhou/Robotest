@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 import six
+import time
 import logging
 import functools
 from json import loads, JSONDecodeError
@@ -140,10 +141,11 @@ def parse_http_response(response):
         headers[k] = v
     return loads(response[0].data.decode('utf-8')), response[1], headers
 
-def _api_request(url, method: str, status_code=200, response_type=None, *extra_params, **extra_args):
+
+def _api_request(url, method: str, response_type=None, status_code=200, *extra_params, **extra_args):
     def decorator(func):
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def api_request(*args, **kwargs):
             local_var_params = locals()
             api_client: ApiClient = args[0].api_client
 
@@ -168,8 +170,20 @@ def _api_request(url, method: str, status_code=200, response_type=None, *extra_p
             collection_formats = {}
 
             # verify the required parameters are set
+            body_params = None
             path_params = {}
-            body_params = func(*args, **kwargs)
+            query_params = []
+            func_result = func(*args, **kwargs)
+            if isinstance(func_result, tuple):
+                func_params = (p for p in func_result)
+                try:
+                    body_params = next(func_params)
+                    query_params = next(func_params)
+                    path_params = next(func_params)
+                except StopIteration:
+                    pass
+            else:
+                body_params = func_result
             # for index, param in enumerate(func.__code__.co_varnames[1:-1]):
             #     if index >= len(args) - 1 or args[index + 1] is None:
             #         if api_client.client_side_validation:
@@ -182,12 +196,15 @@ def _api_request(url, method: str, status_code=200, response_type=None, *extra_p
             del local_var_params['args']
             del local_var_params['kwargs']
 
-            query_params = []
+            # query_params = []
+            for param in query_params:
+                if param[1] is None:
+                    query_params.remove(param)
             for param in extra_params:
                 if param in local_var_params and local_var_params[param] is not None:
                     query_params.append((param, local_var_params[param]))
 
-            header_params = args[0].headers
+            header_params = {}
             form_params = []
             local_var_files = {}
 
@@ -203,7 +220,7 @@ def _api_request(url, method: str, status_code=200, response_type=None, *extra_p
 
             # Authentication setting
             auth_settings = ['BearerToken']
-
+            start_time = time.time()
             try:
                 response = api_client.call_api(
                     url, method,
@@ -227,6 +244,10 @@ def _api_request(url, method: str, status_code=200, response_type=None, *extra_p
                         response = [response[0].data, response[1], response[2]]
             except ApiException as e:
                 response = [e.body, e.status, e.headers]
+            # except TimeoutError as e:
+            #     logger.error(f"Timeout to request {url} within {local_var_params.get('_request_timeout')} seconds. {e}")
+            #     return
+            elapsed_time = time.time() - start_time
             if isinstance(response[0], bytes):
                 response[0] = response[0].decode('utf-8')
             if isinstance(response[0], str):
@@ -235,7 +256,7 @@ def _api_request(url, method: str, status_code=200, response_type=None, *extra_p
                 except JSONDecodeError as e:
                     logger.debug(e.msg)
             assert response[1] == status_code, f"Expected status code for response is {status_code} rather than {response[1]}"
-            logger.debug("response body: %s", response[0])
+            logger.debug("request url: %s, request method: %s, request body: %s, response body: %s, response elapsed: %.3fs", f'{api_client.configuration.host}{url}', method, body_params, response[0], elapsed_time)
             return tuple(response)
-        return wrapper
+        return api_request
     return decorator
