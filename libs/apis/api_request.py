@@ -227,35 +227,32 @@ def _api_request(url, method: str, response_type=None, status_code=200, *extra_p
             # Authentication setting
             auth_settings = ['BearerToken']
             start_time = time.time()
-            try:
-                response = api_client.call_api(
-                    url, method,
-                    path_params,
-                    query_params,
-                    header_params,
-                    body=body_params,
-                    post_params=form_params,
-                    files=local_var_files,
-                    response_type=response_type,
-                    auth_settings=auth_settings,
-                    async_req=local_var_params.get('async_req'),
-                    _return_http_data_only=local_var_params.get('_return_http_data_only'),
-                    _preload_content=local_var_params.get('_preload_content',  True if response_type else False),
-                    _request_timeout=local_var_params.get('_request_timeout'),
-                    collection_formats=collection_formats)
-                if local_var_params.get('_return_http_data_only'):
-                    return response
-                else:
-                    if isinstance(response[0], HTTPResponse):
-                        response = [response[0].data, response[1], response[2]]
-            except ApiException as e:
-                return [e.body, e.status, e.headers]
+            # try:
+            response = api_client.call_api(
+                url, method,
+                path_params,
+                query_params,
+                header_params,
+                body=body_params,
+                post_params=form_params,
+                files=local_var_files,
+                response_type=response_type,
+                auth_settings=auth_settings,
+                async_req=local_var_params.get('async_req'),
+                _return_http_data_only=local_var_params.get('_return_http_data_only'),
+                _preload_content=local_var_params.get('_preload_content',  True if response_type else False),
+                _request_timeout=local_var_params.get('_request_timeout'),
+                collection_formats=collection_formats)
+            # except ApiException as e:
+            #     return e.body, e.status, e.headers
             # except TimeoutError as e:
             #     logger.error(f"Timeout to request {url} within {local_var_params.get('_request_timeout')} seconds. {e}")
             #     return
             elapsed_time = time.time() - start_time
             if local_var_params.get('_return_http_data_only'):
                 response_data = response
+                if isinstance(response_data, HTTPResponse):
+                    assert response_data.status == status_code, f"Expected status code for response is {status_code} rather than {response_data.status}"
             else:
                 response_data = response[0]
                 assert response[1] == status_code, f"Expected status code for response is {status_code} rather than {response[1]}"
@@ -273,7 +270,8 @@ def _api_request(url, method: str, response_type=None, status_code=200, *extra_p
             if local_var_params.get('_return_http_data_only'):
                 return response_data
             else:
-                return response_data, response[1], response[2]
+                return response_data
+                # return response_data, response[1], response[2]
         return api_request
     return decorator
 
