@@ -48,19 +48,26 @@ def compare_objects(obj1, obj2):
     return True
 
 
-def wait_for(f, interval: int = 0, timeout: int = 1):
+def wait_for(f, interval: int = 0, _timeout: int = 1):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             start = time.time()
+            if kwargs.get('_timeout'):
+                timeout = kwargs.get('_timeout')
+            else:
+                timeout = _timeout
             while time.time() - start < timeout if timeout > 0 else False:
                 result = func(*args, **kwargs)
                 if f(result):
                     return result
                 logger.debug(f"Wait for the conditions evaluated by '{f.__name__}' with args:\n{result}")
                 time.sleep(interval)
-            msg = f"Timeout to achieve the conditions evaluated by '{f.__name__}' with args:\n{result}"
-            raise Exception(msg)
+            if kwargs.get('_timeout'):
+                msg = f"Timeout to achieve the conditions by '{f.__name__}' with args:\n{result}"
+                raise Exception(msg)
+            else:
+                return func(*args, **kwargs)
         return wrapper
     return decorator
 
