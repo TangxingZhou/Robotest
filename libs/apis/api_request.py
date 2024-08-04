@@ -590,9 +590,7 @@ class APIClient(ApiClient):
                 klass.openapi_types is not None and
                 isinstance(data, (list, dict))):
             for attr, attr_type in six.iteritems(klass.openapi_types):
-                pp = klass.attribute_map[attr].split('.')
                 value = self.retrieve_sub_element(data, *klass.attribute_map[attr].split('.'))
-                # if value is not None:
                 kwargs[attr] = self.__deserialize(value, attr_type)
 
         instance = klass(**kwargs)
