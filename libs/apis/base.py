@@ -2,13 +2,14 @@ import pprint
 from enum import Enum
 from src.service.error import APIError
 
+
 class BaseModel:
 
     def __init__(self, **kwargs):
         if 'code' in kwargs:
             self.code = kwargs.get('code')
-        if 'msg' in kwargs:
-            self.msg = kwargs.get('msg')
+        if 'msg' in kwargs or 'message' in kwargs:
+            self.msg = kwargs.get('msg', kwargs.get('message'))
 
     @property
     def err(self):
@@ -53,7 +54,7 @@ class BaseModel:
 
     def __repr__(self):
         return self.to_str()
-    
+
     def __eq__(self, other):
         """Returns true if both objects are equal"""
         if not isinstance(other, self.__class__):

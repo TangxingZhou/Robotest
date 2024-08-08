@@ -18,6 +18,7 @@ from kubernetes.client.exceptions import (
     ApiValueError,
     ApiException
 )
+from .error import APIError
 
 
 logger = logging.getLogger(__name__)
@@ -227,24 +228,31 @@ def _api_request(url, method: str, response_type=None, status_code=200, *extra_p
             # Authentication setting
             auth_settings = ['BearerToken']
             start_time = time.time()
-            # try:
-            response = api_client.call_api(
-                url, method,
-                path_params,
-                query_params,
-                header_params,
-                body=body_params,
-                post_params=form_params,
-                files=local_var_files,
-                response_type=response_type,
-                auth_settings=auth_settings,
-                async_req=local_var_params.get('async_req'),
-                _return_http_data_only=local_var_params.get('_return_http_data_only'),
-                _preload_content=local_var_params.get('_preload_content',  True if response_type else False),
-                _request_timeout=local_var_params.get('_request_timeout'),
-                collection_formats=collection_formats)
-            # except ApiException as e:
-            #     return e.body, e.status, e.headers
+            try:
+                response = api_client.call_api(
+                    url, method,
+                    path_params,
+                    query_params,
+                    header_params,
+                    body=body_params,
+                    post_params=form_params,
+                    files=local_var_files,
+                    response_type=response_type,
+                    auth_settings=auth_settings,
+                    async_req=local_var_params.get('async_req'),
+                    _return_http_data_only=local_var_params.get('_return_http_data_only'),
+                    _preload_content=local_var_params.get('_preload_content', True if response_type else False),
+                    _request_timeout=local_var_params.get('_request_timeout'),
+                    collection_formats=collection_formats)
+            except ApiException as e:
+                if e.body:
+                    try:
+                        return APIError(**loads(e.body))
+                    except JSONDecodeError as je:
+                        logger.debug(je.msg)
+                        return APIError(code=e.status, msg=e.body.decode('utf-8') if isinstance(e.body, bytes) else e.body)
+                else:
+                    return APIError(code=e.status, msg=e.reason)
             # except TimeoutError as e:
             #     logger.error(f"Timeout to request {url} within {local_var_params.get('_request_timeout')} seconds. {e}")
             #     return

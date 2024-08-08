@@ -18,4 +18,4 @@ class APIError:
             return False
 
     def is_ok(self):
-        return self.code in (0, 'OK') and self.msg == 'OK'
+        return self.code in (0, '0', 'OK') and self.msg == 'OK'
