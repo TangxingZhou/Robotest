@@ -18,7 +18,7 @@ from kubernetes.client.exceptions import (
     ApiValueError,
     ApiException
 )
-from .error import APIError
+from .base import BaseModel
 
 
 logger = logging.getLogger(__name__)
@@ -247,12 +247,23 @@ def _api_request(url, method: str, response_type=None, status_code=200, *extra_p
             except ApiException as e:
                 if e.body:
                     try:
-                        return APIError(**loads(e.body))
+                        if response_type:
+                            return BaseModel(**loads(e.body))
+                        else:
+                            return loads(e.body)
                     except JSONDecodeError as je:
                         logger.debug(je.msg)
-                        return APIError(code=e.status, msg=e.body.decode('utf-8') if isinstance(e.body, bytes) else e.body)
+                        if response_type:
+                            return BaseModel(code=e.status,
+                                             msg=e.body.decode('utf-8') if isinstance(e.body, bytes) else e.body)
+                        else:
+                            return {'code': e.status,
+                                    'msg': e.body.decode('utf-8') if isinstance(e.body, bytes) else e.body}
                 else:
-                    return APIError(code=e.status, msg=e.reason)
+                    if response_type:
+                        return BaseModel(code=e.status, msg=e.reason)
+                    else:
+                        return {'code': e.status, 'msg': e.reason}
             # except TimeoutError as e:
             #     logger.error(f"Timeout to request {url} within {local_var_params.get('_request_timeout')} seconds. {e}")
             #     return
