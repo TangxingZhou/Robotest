@@ -327,18 +327,22 @@ class Deserializer:
     @staticmethod
     def retrieve_sub_element(data, *args):
         for p in args:
+            _data = None
             if isinstance(data, list):
                 if p.isdigit():
                     p = int(p)
                 if isinstance(p, int) and p < len(data):
-                    data = data[p]
-                else:
-                    data = None
+                    _data = data[p]
             elif isinstance(data, dict):
-                if isinstance(p, str) and p in data:
-                    data = data[p]
-                else:
-                    data = None
+                if isinstance(p, str):
+                    if '|' in p:
+                        for _p in p.split('|'):
+                            if _p in data:
+                                _data = data[_p]
+                                break
+                    else:
+                        _data = data.get(p)
+            data = _data
         return data
 
     @classmethod
