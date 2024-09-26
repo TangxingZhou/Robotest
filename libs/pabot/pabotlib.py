@@ -205,7 +205,7 @@ class PabotLib(_PabotLib):
 
     def release_locks(self):
         """
-        Release all locks called by instance.
+        Release all locks called by instance_.
         """
         if self._remotelib:
             self._remotelib.run_keyword('release_locks',

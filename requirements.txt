@@ -1,21 +1,33 @@
 --index https://mirrors.aliyun.com/pypi/simple
 --trusted-host mirrors.aliyun.com
 
+allure-pytest
+allure-python-commons==2.12.0
+allure-robotframework
+celery
+jinja2
+jsonpath-ng
+kubernetes==29.0.0
+locust
+mysqlclient
+PyMySQL==1.0.2
+pyodbc
+pytest==7.2.1
+pytest-dependency==0.6.0
+pytest-ini==0.33
+pytest-runner==6.0.0
+pytest-timeout==2.2.0
+python-dateutil==2.9.0.post0
+pytz
+PyYAML==6.0.1
+requests
+redis
 robotframework
 robotframework-seleniumlibrary
 robotremoteserver
 robotframework-requests
 robotframework-sshlibrary
-allure-robotframework
-allure-pytest
+six
 sqlalchemy
 sqlalchemy-utils
-mysqlclient
-# https://docs.microsoft.com/en-us/sql/connect/python/pyodbc/python-sql-driver-pyodbc?view=sql-server-ver15
-pyodbc
-jsonpath-ng
-jinja2
-pytz
-locust
-celery
-redis
+websocket-client==1.8.0

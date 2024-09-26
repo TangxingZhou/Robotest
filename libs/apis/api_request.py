@@ -524,7 +524,7 @@ class APIClient(ApiClient):
         :return: deserialized object.
         """
         # handle file downloading
-        # save response body into a tmp file and return the instance
+        # save response body into a tmp file and return the instance_
         if response_type == "file":
             return self._ApiClient__deserialize_file(response)
 
