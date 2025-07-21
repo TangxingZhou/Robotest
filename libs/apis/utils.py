@@ -7,6 +7,47 @@ import inspect
 logger = logging.getLogger(__name__)
 
 
+class SingletonMeta(type):
+    _default = {}
+
+    def __call__(cls, key='default', *args, **kwargs):
+        if cls._default.get(key) is None:
+            cls._default[key] = super(SingletonMeta, cls).__call__(key, *args, **kwargs)
+        return cls._default[key]
+
+
+class FactoryMeta(type):
+    _sub_classes = {}
+
+    def __init__(cls, name, bases, attrs):
+        super().__init__(name, bases, attrs)
+        type_name = attrs.get('type_name', name.lower())
+        cls._sub_classes[type_name] = cls
+
+    # def __new__(cls, name, bases, attrs, **kwargs):
+    #     type_name = kwargs.get('type_name', name.lower())
+    #     new_cls = super().__new__(cls, name, bases, attrs)
+    #     cls._sub_classes[type_name] = new_cls
+    #     return new_cls
+
+    def __call__(cls, type_name=None, *args, **kwargs):
+        if not type_name:
+            type_name = getattr(cls, 'type_name')
+        if type_name not in cls._sub_classes:
+            raise ValueError(f"Unknown type: {type_name}")
+        subclass = cls._sub_classes[type_name]
+        if cls is subclass:
+            return super().__call__(*args, **kwargs)
+        else:
+            return subclass(type_name, *args, **kwargs)
+
+    # def __call__(cls, type_name, *args, **kwargs):
+    #     for subclass in cls.__subclasses__():
+    #         if getattr(subclass, 'type_name', None) == type_name:
+    #             return super().__call__(*args, **kwargs)
+    #     raise ValueError(f"Unknown type: {type_name}")
+
+
 def compare_objects(obj1, obj2):
     def sort_key(item):
         if isinstance(item, list):

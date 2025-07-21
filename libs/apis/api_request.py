@@ -180,6 +180,7 @@ def _api_request(url, method: str, response_type=None, status_code=200, *extra_p
             body_params = None
             path_params = {}
             query_params = []
+            form_params, local_var_files = {}, {}
             func_result = func(*args, **kwargs)
             if isinstance(func_result, tuple):
                 func_params = (p for p in func_result)
@@ -187,6 +188,8 @@ def _api_request(url, method: str, response_type=None, status_code=200, *extra_p
                     body_params = next(func_params)
                     query_params = next(func_params)
                     path_params = next(func_params)
+                    form_params = next(func_params)
+                    local_var_files = next(func_params)
                 except StopIteration:
                     pass
             else:
@@ -212,8 +215,8 @@ def _api_request(url, method: str, response_type=None, status_code=200, *extra_p
                     query_params.append((param, local_var_params[param]))
 
             header_params = {}
-            form_params = []
-            local_var_files = {}
+            if form_params or local_var_files:
+                header_params['Content-Type'] = 'multipart/form-data'
 
             # HTTP header `Accept`
             header_params['Accept'] = api_client.select_header_accept(

@@ -1,4 +1,3 @@
-
 from __future__ import absolute_import
 
 import os
@@ -14,9 +13,13 @@ from datetime import date, datetime
 # python 2 and python 3 compatibility library
 from six import PY3, integer_types, iteritems, text_type
 from six.moves.urllib.parse import quote
-
 from .configuration import Configuration
 from .rest import ApiException, RESTClientObject
+import allure
+import requests
+import time
+import threading
+# from kubernetes.client import Configuration
 
 
 class ApiClient(object):
@@ -629,3 +632,38 @@ class ApiClient(object):
             if klass_name:
                 instance = self.__deserialize(data, klass_name)
         return instance
+
+
+class APIClient:
+
+    clients = {}
+    client_lock = threading.Lock()
+
+    def __init__(self):
+        # self.login_admin_platform()
+        threading.Thread(target=self.refresh_login_token, args=(self.login_admin_platform,), daemon=True).start()
+
+    @classmethod
+    @allure.step('登录管理平台')
+    def login_admin_platform(cls, username=os.getenv('ADMIN_USER'), password=os.getenv('ADMIN_PASSWORD')):
+        payload = {
+            'username': username,
+            'password': password
+        }
+        res = requests.post(
+            f"{os.getenv('ADMIN_HOST')}/login",
+            json=payload
+        )
+        assert res.status_code == 200 and res.json().get('code') == 0, 'failed to login management platform'
+        api_client = ApiClient(Configuration(host=os.getenv('ADMIN_HOST')))
+        api_client.set_default_header('Access-Token', res.headers.get('Access-Token'))
+        api_client.set_default_header('Uid', res.headers.get('Uid'))
+        with cls.client_lock:
+            cls.clients['admin'] = api_client
+
+    @classmethod
+    def refresh_login_token(cls, func, interval=10 * 60, *args, **kwargs):
+        while True:
+            func(*args, **kwargs)
+            time.sleep(interval)
+
