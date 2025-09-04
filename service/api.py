@@ -6,13 +6,13 @@ import inspect
 import importlib
 from enum import EnumMeta
 from .models import BaseModel
-
+from urllib.parse import unquote
 # from urllib3.exceptions import TimeoutError
 import allure
 import six
 import logging
 import functools
-from json import loads, JSONDecodeError
+import json
 from urllib3.response import HTTPResponse
 from kubernetes.client import ApiClient
 from kubernetes.client.exceptions import (
@@ -24,10 +24,24 @@ from kubernetes.client.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-@allure.step('调用API')
-def log_calls_of_moc_api(api_client: ApiClient, url, method, body, query_params, path_params, response, request_at, elapsed):
-    logger.debug("request url: %s, request method: %s, request body: %s, request query params: %s, request path params: %s,\nresponse body:\n%s,\nrequest at: %s, response elapsed: %s",
-                 f'{api_client.configuration.host}{url}', method, body, query_params, path_params, response, request_at, elapsed)
+@allure.step('调用API接口')
+def log_calls_of_moc_api(
+        api_client: ApiClient, url, method, request_id, headers,
+        body, query_params, path_params, form_params, files,
+        response, request_at, elapsed
+):
+    logger.debug(
+        "request url: %s, request method: %s"
+        "\nrequest id: %s"
+        "\nrequest headers: %s"
+        "\nrequest body:\n%s"
+        "\nrequest query params: %s, request path params: %s, request form params: %s, request files: %s"
+        "\nresponse body:\n%s"
+        "\nrequest at: %s, response elapsed: %s",
+        f'{api_client.configuration.host}{url}', method, request_id, headers,
+        body, query_params, path_params, form_params, files,
+        response, request_at, elapsed
+    )
 
 
 def moc_api_request(url, method: str, response_type=None, status_code=200, *extra_params, **extra_args):
@@ -61,6 +75,7 @@ def moc_api_request(url, method: str, response_type=None, status_code=200, *extr
             body_params = None
             path_params = {}
             query_params = []
+            form_params, local_var_files = {}, {}
             func_result = func(*args, **kwargs)
             if isinstance(func_result, tuple):
                 func_params = (p for p in func_result)
@@ -68,6 +83,8 @@ def moc_api_request(url, method: str, response_type=None, status_code=200, *extr
                     body_params = next(func_params)
                     query_params = next(func_params)
                     path_params = next(func_params)
+                    form_params = next(func_params)
+                    local_var_files = next(func_params)
                 except StopIteration:
                     pass
             else:
@@ -93,12 +110,13 @@ def moc_api_request(url, method: str, response_type=None, status_code=200, *extr
                     query_params.append((param, local_var_params[param]))
 
             header_params = {}
-            form_params = []
-            local_var_files = {}
+            if form_params or local_var_files:
+                header_params['Content-Type'] = 'multipart/form-data'
 
             # HTTP header `Accept`
-            header_params['Accept'] = api_client.select_header_accept(
-                ['application/json', 'application/yaml', 'application/vnd.kubernetes.protobuf'])
+            header_params['Accept'] = 'application/json, text/plain, */*'
+            # header_params['Accept'] = api_client.select_header_accept(
+            #     ['application/json', 'application/yaml', 'application/vnd.kubernetes.protobuf'])
 
             # HTTP header `Content-Type`
             if method.lower() == 'patch':
@@ -126,13 +144,20 @@ def moc_api_request(url, method: str, response_type=None, status_code=200, *extr
                     _request_timeout=local_var_params.get('_request_timeout'),
                     collection_formats=collection_formats)
             except ApiException as e:
+                log_calls_of_moc_api(
+                    api_client, url, method, e.headers.get('X-Request-Id'),
+                    header_params, body_params, query_params, path_params, form_params, local_var_files,
+                    {'code': e.status, 'msg': e.reason},
+                    start_time.strftime('%Y-%m-%d %H:%M:%S.%f'),
+                    e.headers.get('X-Elapsed-Time')
+                )
                 if e.body:
                     try:
                         if response_type:
-                            return BaseModel(**loads(e.body))
+                            return BaseModel(**json.loads(e.body))
                         else:
-                            return loads(e.body)
-                    except JSONDecodeError as je:
+                            return json.loads(e.body)
+                    except json.JSONDecodeError as je:
                         logger.debug(je.msg)
                         if response_type:
                             return BaseModel(code=e.status, msg=e.body.decode('utf-8') if isinstance(e.body, bytes) else e.body)
@@ -155,15 +180,36 @@ def moc_api_request(url, method: str, response_type=None, status_code=200, *extr
                 response_data = response[0]
                 assert response[1] == status_code, f"Expected status code for response is {status_code} rather than {response[1]}"
             if isinstance(response_data, HTTPResponse):
-                try:
-                    response_data = loads(response_data.data)
-                except JSONDecodeError as e:
-                    logger.debug(e.msg)
-                    response_data = response_data.data
-                    if isinstance(response_data, bytes):
-                        response_data = response_data.decode('utf-8')
-            # logger.debug("request url: %s, request method: %s, request body: %s,\nresponse body: %s,\nresponse elapsed: %.3fs", f'{api_client.configuration.host}{url}', method, body_params, response_data, elapsed_time)
-            log_calls_of_moc_api(api_client, url, method, body_params, query_params, path_params, response_data, start_time.strftime('%Y-%m-%d %H:%M:%S.%f'), '{:.3f}s'.format(elapsed_time))
+                if response[2].get('Content-Type') == 'application/octet-stream':
+                    file_name = unquote(re.search(
+                            r'filename=(.+)',
+                            response[2].get('Content-Disposition')).groups()[0]
+                    )
+                    with open(file_name, 'wb') as f:
+                        f.write(response_data.data)
+                    response_data = file_name
+                elif 'application/json' in response[2].get('Content-Type'):
+                    try:
+                        response_data = json.loads(response_data.data)
+                    except json.JSONDecodeError as e:
+                        logger.debug(e.msg)
+                        response_data = response_data.data
+                        if isinstance(response_data, bytes):
+                            response_data = response_data.decode('utf-8')
+                log_calls_of_moc_api(
+                    api_client, url, method, response[2].get('X-Request-Id'),
+                    header_params, body_params, query_params, path_params, form_params, local_var_files,
+                    response_data,
+                    start_time.strftime('%Y-%m-%d %H:%M:%S.%f'),
+                    response[2].get('X-Elapsed-Time') if response[2].get('X-Elapsed-Time') else '{:.3f}s'.format(elapsed_time)
+                )
+                # log_calls_of_moc_api(
+                #     api_client, url, method, response[2].get('X-Request-Id'),
+                #     header_params, body_params, query_params, path_params, form_params, local_var_files,
+                #     json.dumps(response_data, indent=2, ensure_ascii=False) if isinstance(response_data, (dict, list)) else response_data,
+                #     start_time.strftime('%Y-%m-%d %H:%M:%S.%f'),
+                #     response[2].get('X-Elapsed-Time') if response[2].get('X-Elapsed-Time') else '{:.3f}s'.format(elapsed_time)
+                # )
             if local_var_params.get('_return_http_data_only'):
                 return response_data
             else:
@@ -209,13 +255,13 @@ class MOCApiClient(ApiClient):
         :return: deserialized object.
         """
         # handle file downloading
-        # save response body into a tmp file and return the instance_
+        # save response body into a tmp file and return the instance
         if response_type == "file":
             return self._ApiClient__deserialize_file(response)
 
         # fetch data from response object
         try:
-            data = loads(response.data)
+            data = json.loads(response.data)
         except ValueError:
             data = response.data
 

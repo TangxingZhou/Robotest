@@ -1,0 +1,1044 @@
+name:  MOC Upgrade Test
+
+on:
+  schedule:
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Environment
+        required: true
+        type: choice
+        options:
+          - qa
+          - dev
+        default: dev
+      restore_s3_bucket:
+        description: The S3 bucket to restore
+        required: false
+        type: string
+      restore_s3_bucket_file_path:
+        description: The S3 bucket path to restore
+        required: false
+        type: string
+env:
+  normal_email_1: ${{ vars.UPGRADE_TEST_EMAIL }}
+  normal_password_1: ${{ secrets.UPGRADE_TEST_PASSWORD }}
+  database_platform_password: ${{ secrets.DATABASE_PLATFORM_PASSWORD }}
+  # management_platform_url: ${{ secrets.MANAGEMENT_PLATFORM_URL }}
+  management_platform_user: ${{ vars.MANAGEMENT_PLATFORM_USER }}
+  management_platform_password: ${{ secrets.MANAGEMENT_PLATFORM_PASSWORD }}
+  env: ${{ inputs.env || vars.ENV || 'dev'}}
+  provider: aliyun
+  region: cn-hangzhou
+  k8s_unit_config: ${{ secrets.K8S_UNIT_CONFIG }}
+  k8s_controller_config: ${{ secrets.K8S_CONTROLLER_CONFIG }}
+jobs:
+  build-mo-image:
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+    outputs:
+      image-repo: ${{ steps.prep.outputs.upgrade-image-repository }}
+      image-tag: ${{ steps.prep.outputs.upgrade-cluster-version }}
+    steps:
+      - name: Parse Variables
+        id: parse
+        run: |
+          UPGRADE_IMAGE_REPOSITORY=$(echo ${{ vars.UPGRADE_IMAGE_REPOSITORY }})
+          UPGRADE_CLUSTER_VERSION=$(echo ${{ vars.UPGRADE_CLUSTER_VERSION }})
+          if [ -z $UPGRADE_IMAGE_REPOSITORY ]; then
+            echo "UPGRADE_IMAGE_REPOSITORY=" >> $GITHUB_OUTPUT
+          else
+            echo "UPGRADE_IMAGE_REPOSITORY=${UPGRADE_IMAGE_REPOSITORY}" >> $GITHUB_OUTPUT
+          fi
+          if [ -z $UPGRADE_CLUSTER_VERSION ]; then
+            echo "UPGRADE_CLUSTER_VERSION=" >> $GITHUB_OUTPUT
+          else
+            echo "UPGRADE_CLUSTER_VERSION=${UPGRADE_CLUSTER_VERSION}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build MO Image
+        if: ${{ contains(fromJSON('["restore", "upgrade"]'), vars.UPGRADE_TEST_ACTION) && !steps.parse.outputs.UPGRADE_IMAGE_REPOSITORY }}
+        id: build
+        uses: matrixorigin/gitops/.github/actions/mo-image@main
+        with:
+          branch: ${{ vars.BUILD_MO_BRANCH }}
+          mo-version: ${{ vars.BUILD_MO_VERSION }}
+          image-repo: registry.cn-hangzhou.aliyuncs.com/mocloud/matrixone
+          platform: linux/amd64
+          acr-username: ${{ secrets.ACR_USERNAME }}
+          acr-password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Prepare MO Image
+        if: ${{ contains(fromJSON('["restore", "upgrade"]'), vars.UPGRADE_TEST_ACTION) }}
+        id: prep
+        shell: bash
+        run: |
+          UPGRADE_IMAGE_REPOSITORY=${{ steps.parse.outputs.UPGRADE_IMAGE_REPOSITORY }}
+          UPGRADE_CLUSTER_VERSION=${{ steps.parse.outputs.UPGRADE_CLUSTER_VERSION }}
+          if [ -z $UPGRADE_IMAGE_REPOSITORY ]; then
+            UPGRADE_IMAGE_REPOSITORY=${{ steps.build.outputs.image-repo }}
+            if [ -z $UPGRADE_CLUSTER_VERSION ]; then
+              UPGRADE_CLUSTER_VERSION=${{ steps.build.outputs.image-tag }}
+            else
+              UPGRADE_CLUSTER_VERSION=`awk -v build_version=${{ steps.build.outputs.image-tag }} -F ',' '{for (i=1; i<=NF; i++) if ($i == "") {print build_version} else {print $i}}' <<< "$UPGRADE_CLUSTER_VERSION" | tr '\n' ','`
+              UPGRADE_CLUSTER_VERSION=${UPGRADE_CLUSTER_VERSION%,*}
+            fi
+          fi
+          echo "upgrade-image-repository=${UPGRADE_IMAGE_REPOSITORY}" >> $GITHUB_OUTPUT
+          echo "upgrade-cluster-version=${UPGRADE_CLUSTER_VERSION}" >> $GITHUB_OUTPUT
+
+  restore:
+    runs-on: amd64-mo-guangzhou-medium8
+    environment:
+      name: dev
+    outputs:
+      mo-host: ${{ steps.restore.outputs.mo-host }}
+      mo-port: ${{ steps.restore.outputs.mo-port }}
+      mo-usr: ${{ steps.restore.outputs.mo-usr }}
+      mo-pass: ${{ steps.restore.outputs.mo-pass }}
+      mo-sys-usr: ${{ steps.restore.outputs.mo-sys-usr }}
+      mo-sys-pass: ${{ steps.restore.outputs.mo-sys-pass }}
+      restore-bucket: ${{ steps.restore.outputs.restore-bucket }}
+      restore-bucket-paths: ${{ steps.restore.outputs.restore-bucket-paths }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: mocloud-tester
+
+      # - name: Set Up Python3.8
+      #   uses: actions/setup-python@v5
+      #   with:
+      #     python-version: '3.8'
+
+      - name: Install Python Dependencies
+        run: |
+          set -uo pipefail
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          echo "/home/runner/externals/node20/bin" >> $GITHUB_PATH
+          python -m venv --without-pip .venv
+          source .venv/bin/activate
+          curl -sL https://bootstrap.pypa.io/get-pip.py | python - -i https://mirrors.aliyun.com/pypi/simple
+          python -m pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple
+          python -m pip install -i https://mirrors.aliyun.com/pypi/simple -r requirements.txt
+          deactivate
+
+      - name: Backup MO Data
+        if: ${{ vars.UPGRADE_TEST_ACTION == 'backup' }}
+        run: |
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          source .venv/bin/activate
+          export PYTHONPATH=$(pwd)
+          python src/upgrade/main.py backup
+          deactivate
+        env:
+          BACKUP_ALIYUN_AK: ${{ secrets.BACKUP_ALIYUN_AK }}
+          BACKUP_ALIYUN_SK: ${{ secrets.BACKUP_ALIYUN_SK }}
+          BACKUP_CLUSTER: ${{ vars.BACKUP_CLUSTER }}
+          BACKUP_CLUSTER_VERSION: ${{ vars.BACKUP_CLUSTER_VERSION }}
+          BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+          BACKUP_S3_BUCKET_FILE_PATH: ${{ vars.BACKUP_S3_BUCKET_FILE_PATH }}
+          BACKUP_ID: ${{ vars.BACKUP_ID }}
+          MO_IMAGE_REPOSITORY: ${{ vars.MO_IMAGE_REPOSITORY }}
+
+      - name: Backup Data for Restore
+        if: ${{ vars.UPGRADE_TEST_ACTION == 'restore' }}
+        id: backup
+        uses: actions/github-script@v7
+        env:
+          BACKUP_WORKFLOW_OWNER: matrixorigin
+          BACKUP_WORKFLOW_REPO: gitops
+          BACKUP_WORKFLOW_ID: aliyun-mo-incremental-backup.yaml
+          BACKUP_LATEST: ${{ vars.BACKUP_LATEST }}
+        with:
+          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          script: |
+            const { BACKUP_WORKFLOW_OWNER, BACKUP_WORKFLOW_REPO, BACKUP_WORKFLOW_ID, BACKUP_LATEST } = process.env;
+            const timeout = 3600000;
+            const interval = 30000;
+            if ( BACKUP_LATEST === 'true' ) {
+              const run_workflow = await github.rest.actions.createWorkflowDispatch({
+                owner: BACKUP_WORKFLOW_OWNER,
+                repo: BACKUP_WORKFLOW_REPO,
+                workflow_id: BACKUP_WORKFLOW_ID,
+                ref: 'main',
+                inputs: {}
+              })
+              if ( run_workflow.status === 204 ) {
+                console.log(`Succeed to run workflow job ${BACKUP_WORKFLOW_OWNER}/${BACKUP_WORKFLOW_REPO}/.github/workflows/${BACKUP_WORKFLOW_ID}@main.`);
+              } else {
+                console.error(`Failed to run workflow job ${BACKUP_WORKFLOW_OWNER}/${BACKUP_WORKFLOW_REPO}/.github/workflows/${BACKUP_WORKFLOW_ID}@main.`);
+                return '';
+              }
+            } else {
+              console.log('Skip to run backup workflow job.');
+            }
+            try {
+              var timer = setTimeout(() => {
+                throw new Error('Timeout to wait for backup job completes.');
+              }, timeout);
+              while (true) {
+                await new Promise(resolve => setTimeout(resolve, interval));
+                const in_progress_runs = await github.rest.actions.listWorkflowRuns({
+                  owner: BACKUP_WORKFLOW_OWNER,
+                  repo: BACKUP_WORKFLOW_REPO,
+                  workflow_id: BACKUP_WORKFLOW_ID,
+                  status: 'in_progress'
+                });
+                if ( in_progress_runs.data.total_count === 0 ) {
+                  clearTimeout(timer);
+                  const success_runs = await github.rest.actions.listWorkflowRuns({
+                    owner: BACKUP_WORKFLOW_OWNER,
+                    repo: BACKUP_WORKFLOW_REPO,
+                    workflow_id: BACKUP_WORKFLOW_ID,
+                    status: 'success'
+                  });
+                  if (success_runs.data.total_count > 0) {
+                    console.log('Run id: ' + success_runs.data.workflow_runs[0].id);
+                    const success_run_jobs = await github.rest.actions.listJobsForWorkflowRun({
+                      owner: BACKUP_WORKFLOW_OWNER,
+                      repo: BACKUP_WORKFLOW_REPO,
+                      run_id: success_runs.data.workflow_runs[0].id
+                    });
+                    if (success_run_jobs.data.total_count > 0) {
+                      console.log('Job id: ' + success_run_jobs.data.jobs[0].id);
+                      const success_run_job_log = await github.rest.actions.downloadJobLogsForWorkflowRun({
+                        owner: BACKUP_WORKFLOW_OWNER,
+                        repo: BACKUP_WORKFLOW_REPO,
+                        job_id: success_run_jobs.data.jobs[0].id
+                      });
+                      console.log('Job logs: ' + success_run_job_log.url);
+                      return success_run_job_log.url;
+                    } else {
+                      console.error('Found no successful run jobs.');
+                    }
+                  } else {
+                    console.error('Found no successful runs.');
+                  }
+                  return '';
+                } else {
+                  console.error('Backup jobs are still running.');
+                }
+              }
+            } catch (error) {
+              console.error(error);
+              // process.exit(1);
+              return '';
+            }
+
+      - name: Get Backup Result
+        if: ${{ vars.UPGRADE_TEST_ACTION == 'restore' }}
+        id: backup-result
+        run: |
+          if [ -z $(echo ${{ vars.BACKUP_ID }}) ]; then
+            if [ -z $(echo ${{ steps.backup.outputs.result }}) ]; then
+              echo "BACKUP_S3_BUCKET=" >> $GITHUB_OUTPUT
+              echo "BACKUP_S3_BUCKET_FILE_PATH=" >> $GITHUB_OUTPUT
+              echo "BACKUP_ID=" >> $GITHUB_OUTPUT
+            else
+              backup_logs=$(curl ${{ steps.backup.outputs.result }})
+              backup_bucket=$(grep 'shell args' <<< "$backup_logs" | awk '{print $7}')
+              backup_bucket_path=$(grep 'shell args' <<< "$backup_logs" | awk '{print $8}')
+              backup_id=$(grep 'new backupID:' <<< "$backup_logs" | awk '{print $4}')
+              echo "BACKUP_S3_BUCKET=$backup_bucket" >> $GITHUB_OUTPUT
+              echo "BACKUP_S3_BUCKET_FILE_PATH=$backup_bucket_path" >> $GITHUB_OUTPUT
+              echo "BACKUP_ID=$backup_id" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "BACKUP_S3_BUCKET=" >> $GITHUB_OUTPUT
+            echo "BACKUP_S3_BUCKET_FILE_PATH=" >> $GITHUB_OUTPUT
+            echo "BACKUP_ID=$(echo ${{ vars.BACKUP_ID }})" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Restore MOC From Backup
+        if: ${{ vars.UPGRADE_TEST_ACTION == 'restore' }}
+        id: restore
+        run: |
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          source .venv/bin/activate
+          export PYTHONPATH=$(pwd)
+          extra_args="restore --create-instance --all"
+          if [ ${{ vars.RUN_MO_TESTS }} = 'false' ]; then
+            extra_args="--disable-mo-tests $extra_args"
+          fi
+          if [ ${{ vars.AUTO_UPGRADE }} = 'false' ]; then
+            extra_args="--disable-auto-upgrade $extra_args"
+          fi
+          if [ ! ${{ vars.RESTORE_FORCE }} = 'false' ]; then
+            extra_args="$extra_args --force"
+          fi
+          if [ ! -z $(echo ${{ vars.RESTORE_MO_ACCOUNT }}) ]; then
+            extra_args="$extra_args --restore-account $(echo ${{ vars.RESTORE_MO_ACCOUNT }})"
+          fi
+          python src/upgrade/main.py $extra_args
+          deactivate
+        env:
+          BACKUP_ALIYUN_AK: ${{ secrets.BACKUP_ALIYUN_AK }}
+          BACKUP_ALIYUN_SK: ${{ secrets.BACKUP_ALIYUN_SK }}
+          RESTORE_ALIYUN_AK: ${{ secrets.RESTORE_ALIYUN_AK }}
+          RESTORE_ALIYUN_SK: ${{ secrets.RESTORE_ALIYUN_SK }}
+          BACKUP_S3_BUCKET: ${{ steps.backup-result.outputs.BACKUP_S3_BUCKET || vars.BACKUP_S3_BUCKET }}
+          BACKUP_S3_BUCKET_FILE_PATH: ${{ steps.backup-result.outputs.BACKUP_S3_BUCKET_FILE_PATH || vars.BACKUP_S3_BUCKET_FILE_PATH }}
+          BACKUP_ID: ${{ steps.backup-result.outputs.BACKUP_ID }}
+          RESTORE_CLUSTER: ${{ vars.RESTORE_CLUSTER }}
+          RESTORE_CLUSTER_VERSION: ${{ vars.RESTORE_CLUSTER_VERSION }}
+          RESTORE_S3_BUCKET: ${{ inputs.restore_s3_bucket || vars.RESTORE_S3_BUCKET }}
+          RESTORE_S3_BUCKET_FILE_PATH: ${{ inputs.restore_s3_bucket_file_path || vars.RESTORE_S3_BUCKET_FILE_PATH }}
+          RESTORE_MOC_PLUGIN_TAG: ${{ vars.RESTORE_MOC_PLUGIN_TAG }}
+          MO_IMAGE_REPOSITORY: ${{ vars.MO_IMAGE_REPOSITORY }}
+          INSTANCE_PASSWORD: ${{ secrets.INSTANCE_PASSWORD }}
+          UPGRADE_STRATEGY: ${{ vars.UPGRADE_STRATEGY }}
+
+      - name: Upload Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: restore-test-logs
+          path: |
+            ${{ github.workspace }}/mocloud-tester/moi-*-test.log
+          retention-days: 7
+
+  upgrade-test:
+    runs-on: amd64-mo-guangzhou-medium8
+    environment:
+      name: dev
+    needs:
+      - build-mo-image
+      - restore
+    outputs:
+      mo-host: ${{ steps.upgrade.outputs.mo-host }}
+      mo-port: ${{ steps.upgrade.outputs.mo-port }}
+      mo-usr: ${{ steps.upgrade.outputs.mo-usr }}
+      mo-pass: ${{ steps.upgrade.outputs.mo-pass }}
+      mo-sys-usr: ${{ steps.upgrade.outputs.mo-sys-usr }}
+      mo-sys-pass: ${{ steps.upgrade.outputs.mo-sys-pass }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: mocloud-tester
+
+      # - name: Set Up Python3.8
+      #   uses: actions/setup-python@v5
+      #   with:
+      #     python-version: '3.8'
+
+      - name: Install Allure
+        run: |
+          export ALLURE_VERSION=2.20.0
+          curl -o allure-$ALLURE_VERSION.tgz -sL https://repo.maven.apache.org/maven2/io/qameta/allure/allure-commandline/$ALLURE_VERSION/allure-commandline-$ALLURE_VERSION.tgz
+          sudo tar -zxvf allure-$ALLURE_VERSION.tgz -C /usr/local/bin/
+          sudo ln -s /usr/local/bin/allure-$ALLURE_VERSION/bin/allure /usr/bin/allure
+
+      - name: Install Python Dependencies
+        run: |
+          set -uo pipefail
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          python -m venv --without-pip .venv
+          source .venv/bin/activate
+          curl -sL https://bootstrap.pypa.io/get-pip.py | python - -i https://mirrors.aliyun.com/pypi/simple
+          python -m pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple
+          python -m pip install -i https://mirrors.aliyun.com/pypi/simple -r requirements.txt
+          deactivate
+
+      - name: Generate Run ID
+        id: run-id
+        run: |
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          source .venv/bin/activate
+          tests_run_id=$(python -c "from uuid import uuid4; print(f'{uuid4()}')")
+          echo "TESTS_RUN_ID=${tests_run_id}" >> $GITHUB_OUTPUT
+          # echo "TESTS_RUN_ID=${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT
+          deactivate
+
+      - name: Run Tests Before Upgrade
+        if: ${{ contains(fromJSON('["restore", "upgrade"]'), vars.UPGRADE_TEST_ACTION) && vars.RUN_MO_TESTS != 'false' && vars.RESTORE_CLUSTER }}
+        run: |
+          # sleep 300
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          source .venv/bin/activate
+          export PYTHONPATH=$(pwd)
+          pytest src/tests/upgrade/before --root-cluster ${{ vars.RESTORE_CLUSTER }} --alluredir allure-results --log-file moi-before-upgrade-test.log
+          deactivate
+        env:
+          RESTORE_ALIYUN_AK: ${{ secrets.RESTORE_ALIYUN_AK }}
+          RESTORE_ALIYUN_SK: ${{ secrets.RESTORE_ALIYUN_SK }}
+          INSTANCE_PASSWORD: ${{ secrets.INSTANCE_PASSWORD }}
+
+      - name: Upgrade MOC
+        if: ${{ contains(fromJSON('["restore", "upgrade"]'), vars.UPGRADE_TEST_ACTION) && always() && !cancelled() }}
+        id: upgrade
+        run: |
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          source .venv/bin/activate
+          export PYTHONPATH=$(pwd)
+          extra_args="upgrade"
+          if [ ${{ vars.RUN_MO_TESTS }} = 'false' ]; then
+            extra_args="--disable-mo-tests $extra_args"
+          fi
+          if [ ${{ vars.AUTO_UPGRADE }} = 'false' ]; then
+            extra_args="--disable-auto-upgrade $extra_args"
+          fi
+          python src/upgrade/main.py $extra_args
+          deactivate
+        env:
+          RESTORE_CLUSTER: ${{ vars.RESTORE_CLUSTER }}
+          UPGRADE_IMAGE_REPOSITORY: ${{ needs.build-mo-image.outputs.image-repo }}
+          UPGRADE_CLUSTER_VERSION: ${{ needs.build-mo-image.outputs.image-tag }}
+          UPGRADE_MOC_PLUGIN_TAG: ${{ vars.UPGRADE_MOC_PLUGIN_TAG }}
+          INSTANCE_PASSWORD: ${{ secrets.INSTANCE_PASSWORD }}
+
+      - name: Run Tests After Upgrade
+        if: ${{ steps.upgrade.outputs.mo-host && vars.RUN_MO_TESTS != 'false' && vars.RESTORE_CLUSTER && always() && !cancelled() }}
+        run: |
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          source .venv/bin/activate
+          export PYTHONPATH=$(pwd)
+          pytest src/tests/upgrade/after --root-cluster ${{ vars.RESTORE_CLUSTER }} --alluredir allure-results --log-file moi-after-upgrade-test.log
+          deactivate
+        env:
+          # RUN_MO_TESTS_USER: ${{ needs.restore.outputs.mo-usr }}
+          INSTANCE_PASSWORD: ${{ secrets.INSTANCE_PASSWORD }}
+
+      - name: Send Tests Allure Result
+        if: always() && !cancelled()
+        run: |
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          source .venv/bin/activate
+          export PYTHONPATH=$(pwd)
+          python send_result.py test
+          deactivate
+        env:
+          security_password: ${{secrets.SECURITY_PASSWORD}}
+
+      - name: Upload Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upgrade-test-logs
+          path: |
+            ${{ github.workspace }}/mocloud-tester/moi-*-test.log
+          retention-days: 7
+
+  load-data:
+    runs-on: amd64-mo-guangzhou-medium8
+    environment:
+      name: dev
+    needs:
+      - restore
+    timeout-minutes: 30
+    if: needs.restore.outputs.mo-host && needs.restore.outputs.mo-usr
+    steps:
+      - name: Checkout mo-load
+        uses: actions/checkout@v4
+        with:
+          repository: matrixorigin/mo-load
+          ref: '1.0'
+          path: mo-load
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Checkout mo-load-data
+        uses: actions/checkout@v4
+        with:
+          repository: matrixorigin/mo-load-data
+          ref: main
+          path: mo-load-data
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      # - name: Set Up Java1.8
+      #   uses: actions/setup-java@v4
+      #   with:
+      #     distribution: temurin
+      #     java-version: 8
+
+      # - uses: ConorMacBride/install-package@v1
+      #   with:
+      #     apt: mysql-client
+
+      - name: Set Java PATH
+        run: |
+          echo "$JAVA_HOME/bin" >> $GITHUB_PATH
+
+      - name: Load Sysbench Data
+        run: |
+          cd $GITHUB_WORKSPACE/mo-load
+          echo "$(date '+%Y-%m-%d %T') - Create database 'sysbench' for sysbench tests"
+          mysql \
+          -h ${{ needs.restore.outputs.mo-host }} \
+          -P ${{ needs.restore.outputs.mo-port }} \
+          -u ${{ needs.restore.outputs.mo-usr }} \
+          -p${{ needs.restore.outputs.mo-pass || secrets.INSTANCE_PASSWORD }} \
+          -e "drop database if exists sysbench; create database if not exists sysbench;"
+          echo "$(date '+%Y-%m-%d %T') - Prepare data for sysbench tests"
+          sed -i.bak "s/\(database:\).*/\1 \"sysbench\"/" sysbench.yml
+          ./start.sh \
+          -m SYSBENCH \
+          -n 10 \
+          -s 100000 \
+          -h ${{ needs.restore.outputs.mo-host }} \
+          -P ${{ needs.restore.outputs.mo-port }} \
+          -u ${{ needs.restore.outputs.mo-usr }} \
+          -p ${{ needs.restore.outputs.mo-pass || secrets.INSTANCE_PASSWORD }} \
+          -b sysbench
+
+      - name: Load TPCC Data
+        run: |
+          set -uo pipefail
+          cd $GITHUB_WORKSPACE/mo-load-data
+          sed -i \
+          -e 's/\(ENDPOINT:\).*/\1 oss-cn-hangzhou-internal.aliyuncs.com/' \
+          -e 's/\(ACCESS_KEY_ID:\).*/\1 ${{ secrets.RESTORE_ALIYUN_AK }}/' \
+          -e 's/\(SECRET_ACCESS_KEY:\).*/\1 ${{ secrets.RESTORE_ALIYUN_SK }}/' \
+          access.yml
+          ./load.sh \
+          -c cases/00_from_s3/tpcc_10 -d tpcc_10 -m -r \
+          -b moc-test-data \
+          -h ${{ needs.restore.outputs.mo-host }} \
+          -P ${{ needs.restore.outputs.mo-port }} \
+          -u ${{ needs.restore.outputs.mo-usr }} \
+          -p ${{ needs.restore.outputs.mo-pass || secrets.INSTANCE_PASSWORD }} \
+          2>&1 | tee load-tpcc-data.log
+
+      - name: Subscribe TPCH Data
+        run: |
+          echo "$(date '+%Y-%m-%d %T') - Subscribe database 'mo_sample_data_tpch_sf10' for tpch tests"
+          mysql \
+          -h ${{ needs.restore.outputs.mo-host }} \
+          -P ${{ needs.restore.outputs.mo-port }} \
+          -u ${{ needs.restore.outputs.mo-usr }} \
+          -p${{ needs.restore.outputs.mo-pass || secrets.INSTANCE_PASSWORD }} \
+          -e "drop database if exists mo_sample_data_tpch_sf10; create database mo_sample_data_tpch_sf10 from sys publication mo_sample_data_tpch_sf10;"
+
+      - name: Upload Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-data-logs
+          path: |
+            ${{ github.workspace }}/mo-load/*.log
+            ${{ github.workspace }}/mo-load/report/
+            ${{ github.workspace }}/mo-load-data/*.log
+            ${{ github.workspace }}/mo-load-data/report/
+          retention-days: 7
+
+  run-sysbench-tests:
+    needs:
+      - load-data
+      - restore
+    if: needs.restore.outputs.mo-host && needs.restore.outputs.mo-usr
+    # if: false
+    uses: ./.github/workflows/scale_guangzhou_runner.yaml
+    secrets: inherit
+    with:
+      JobName: test-sysbench-job
+      Host: ${{ needs.restore.outputs.mo-host }}
+      User: ${{ needs.restore.outputs.mo-usr }}
+      Password: ${{ needs.restore.outputs.mo-pass }}
+      SysBenchThreading: 10
+      SysBenchDuration: 60
+
+  run-tpcc-tests:
+    runs-on: amd64-mo-guangzhou-medium8
+    environment:
+      name: dev
+    needs:
+      - load-data
+      - restore
+    timeout-minutes: 70
+    if: needs.restore.outputs.mo-host && needs.restore.outputs.mo-usr
+    # uses: ./.github/workflows/scale_guangzhou_runner.yaml
+    # secrets: inherit
+    # with:
+    #   JobName: test-tpcc-job
+    #   Host: ${{ needs.restore.outputs.mo-host }}
+    #   User: ${{ needs.restore.outputs.mo-usr }}
+    #   Password: ${{ needs.restore.outputs.mo-pass }}
+    #   TpExecuteTime: 60
+    steps:
+      - name: Checkout mo-tpcc
+        uses: actions/checkout@v4
+        with:
+          repository: matrixorigin/mo-tpcc
+          ref: main
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Execute TPCC
+        run: |
+          echo "$JAVA_HOME/bin" >> $GITHUB_PATH
+          export PATH=$PATH:$JAVA_HOME/bin
+          cd $GITHUB_WORKSPACE
+          cp props.mo props_10.mo
+          sed -i 's/socketTimeout=60000/socketTimeout=1000000/' props_10.mo
+          sed -i '/.*terminals=*/c\terminals=10' props_10.mo
+          sed -i '/.*warehouses=*/c\warehouses=10' props_10.mo
+          sed -i '/.*user=*/c\user=${{ needs.restore.outputs.mo-usr }}' props_10.mo
+          sed -i "/.*password=*/c\password=${{ needs.restore.outputs.mo-pass || secrets.INSTANCE_PASSWORD }}" props_10.mo
+          sed -i '/runMins=*/c\runMins=60' props_10.mo
+          sed -i 's/tpcc/tpcc_10/g' props_10.mo
+          sed -i 's/127.0.0.1/${{ needs.restore.outputs.mo-host }}/g' props_10.mo
+          ./runBenchmark.sh props_10.mo
+          ./runVerify.sh props_10.mo
+
+      - name: Upload Logs
+        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: test-tpcc-report
+          path:
+            ${{ github.workspace }}/*.log
+            ${{ github.workspace }}/report/
+          retention-days: 7
+
+  run-tpch-tests:
+    needs:
+      - load-data
+      - restore
+    if: needs.restore.outputs.mo-host && needs.restore.outputs.mo-usr
+    # if: false
+    uses: ./.github/workflows/scale_guangzhou_runner.yaml
+    secrets: inherit
+    with:
+      JobName: test-scale-job
+      Host: ${{ needs.restore.outputs.mo-host }}
+      User: ${{ needs.restore.outputs.mo-usr }}
+      Password: ${{ needs.restore.outputs.mo-pass }}
+      ApExecuteTime: 20
+      ApWaitTime: 10
+      ApExecuteCount: 2
+
+  run-bigdata-tests:
+    runs-on: amd64-mo-guangzhou-medium8
+    environment:
+      name: dev
+    needs:
+      - upgrade-test
+    timeout-minutes: 30
+    if: needs.upgrade-test.outputs.mo-host && needs.upgrade-test.outputs.mo-usr && always() && !cancelled()
+    steps:
+      # - uses: ConorMacBride/install-package@v1
+      #   with:
+      #     apt: mysql-client
+
+      - name: Checkout mo-nightly-regression
+        uses: actions/checkout@v4
+        with:
+          repository: matrixorigin/mo-nightly-regression
+          ref: big_data
+          path: mo-nightly-regression
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      # - name: Set Up Python3.8
+      #   uses: actions/setup-python@v5
+      #   with:
+      #     python-version: '3.8'
+
+      - name: Install Python Dependencies
+        run: |
+          set -uo pipefail
+          cd $GITHUB_WORKSPACE/mo-nightly-regression/tools/mo-regression-test
+          python -m venv --without-pip .venv
+          source .venv/bin/activate
+          curl -sL https://bootstrap.pypa.io/get-pip.py | python - -i https://mirrors.aliyun.com/pypi/simple
+          python -m pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple
+          sed -i.bak -e 's/^\(numpy.*\)$/# \1/' -e 's/^pandas.*/pandas/' requirements.txt
+          python -m pip install -i https://mirrors.aliyun.com/pypi/simple -r requirements.txt
+          deactivate
+
+      - name: Load 1Y Data
+        run: |
+          cd $GITHUB_WORKSPACE/mo-nightly-regression/tools/mo-regression-test
+          sed -i.bak \
+          -e 's#\${ENDPOINT}#http://oss-cn-hangzhou-internal.aliyuncs.com#g' \
+          -e 's/\${ACCESS_KEY_ID}/${{ secrets.RESTORE_ALIYUN_AK }}/g' \
+          -e 's/\${SECRET_ACCESS_KEY}/${{ secrets.RESTORE_ALIYUN_SK }}/g' \
+          -e 's/mo-load-guangzhou-1308875761/moc-test-data/g' \
+          -e 's/mo-big-data/bigdata/g' \
+          cases/big_data_test/02_LOAD_DATA/01_load_basic_for_100M.sql
+          mysql \
+          -h ${{ needs.upgrade-test.outputs.mo-host }} \
+          -P ${{ needs.upgrade-test.outputs.mo-port }} \
+          -u ${{ needs.upgrade-test.outputs.mo-usr }} \
+          -p${{ needs.upgrade-test.outputs.mo-pass || secrets.INSTANCE_PASSWORD }} \
+          -e "drop database if exists big_data_test;drop database if exists ssb_100G;"
+          echo "$(date '+%Y-%m-%d %T') - Create Database and Tables for Bigdata Tests"
+          source .venv/bin/activate
+          python run.py \
+          -H ${{ needs.upgrade-test.outputs.mo-host }} \
+          -P ${{ needs.upgrade-test.outputs.mo-port }} \
+          -u ${{ needs.upgrade-test.outputs.mo-usr }} \
+          -p ${{ needs.upgrade-test.outputs.mo-pass || secrets.INSTANCE_PASSWORD }} \
+          -c ./cases/big_data_test/01_CREATE_TABLE
+          echo "$(date '+%Y-%m-%d %T') - Start to Load 1Y Data"
+          python run.py \
+          -H ${{ needs.upgrade-test.outputs.mo-host }} \
+          -P ${{ needs.upgrade-test.outputs.mo-port }} \
+          -u ${{ needs.upgrade-test.outputs.mo-usr }} \
+          -p ${{ needs.upgrade-test.outputs.mo-pass || secrets.INSTANCE_PASSWORD }} \
+          -c ./cases/big_data_test/02_LOAD_DATA/01_load_basic_for_100M.sql
+          python run.py \
+          -H ${{ needs.upgrade-test.outputs.mo-host }} \
+          -P ${{ needs.upgrade-test.outputs.mo-port }} \
+          -u ${{ needs.upgrade-test.outputs.mo-usr }} \
+          -p ${{ needs.upgrade-test.outputs.mo-pass || secrets.INSTANCE_PASSWORD }} \
+          -c ./cases/big_data_test/03_INSERT_SELECT/11_table_basic_for_alter_100M.sql
+          deactivate
+
+      - name: Write 1Y Test
+        run: |
+          cd $GITHUB_WORKSPACE/mo-nightly-regression/tools/mo-regression-test
+          source .venv/bin/activate
+          python run.py \
+          -H ${{ needs.upgrade-test.outputs.mo-host }} \
+          -P ${{ needs.upgrade-test.outputs.mo-port }} \
+          -u ${{ needs.upgrade-test.outputs.mo-usr }} \
+          -p ${{ needs.upgrade-test.outputs.mo-pass || secrets.INSTANCE_PASSWORD }} \
+          -t 1 \
+          -c ./cases/big_data_test/04_QUERIES/15_moc_write_ddl_100M.sql
+          deactivate
+
+      - name: Upload Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: run-bigdata-tests-logs
+          path: |
+            ${{ github.workspace }}/mo-nightly-regression/tools/mo-regression-test/*.log
+            ${{ github.workspace }}/mo-nightly-regression/tools/mo-regression-test/report/
+          retention-days: 7
+
+  run-customer-tests:
+    runs-on: amd64-mo-guangzhou-medium8
+    environment:
+      name: dev
+    needs:
+      - upgrade-test
+    timeout-minutes: 60
+    if: needs.upgrade-test.outputs.mo-host && always() && !cancelled()
+    steps:
+      - name: Checkout mo-nightly-regression
+        uses: actions/checkout@v4
+        with:
+          repository: matrixorigin/mo-nightly-regression
+          ref: main
+          path: mo-nightly-regression
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      # - name: Set Up Python3.8
+      #   uses: actions/setup-python@v5
+      #   with:
+      #     python-version: '3.8'
+
+      - name: Install Python Dependencies
+        run: |
+          set -uo pipefail
+          cd $GITHUB_WORKSPACE/mo-nightly-regression/tools/mo-regression-test
+          python -m venv --without-pip .venv
+          source .venv/bin/activate
+          curl -sL https://bootstrap.pypa.io/get-pip.py | python - -i https://mirrors.aliyun.com/pypi/simple
+          python -m pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple
+          sed -i.bak -e 's/^\(numpy.*\)$/# \1/' -e 's/^pandas.*/pandas/' requirements.txt
+          python -m pip install -i https://mirrors.aliyun.com/pypi/simple -r requirements.txt
+          deactivate
+
+      - name: Run Customer Tests
+        run: |
+          cd $GITHUB_WORKSPACE/mo-nightly-regression/tools/mo-regression-test
+          if [ -z $(echo ${{ vars.RESTORE_MO_ACCOUNT }}) ]; then
+            echo "$(date '+%Y-%m-%d %T') - No MO account is restored, won't run customer tests"
+            exit 0
+          fi
+          for ds in $(echo $RUN_DATASETS | tr ',' ' '); do
+            if [ -d ./cases/$ds/ ]; then
+              source .venv/bin/activate
+              python run.py \
+              -H ${{ needs.upgrade-test.outputs.mo-host }} \
+              -P ${{ needs.upgrade-test.outputs.mo-port }} \
+              -u ${{ vars.RESTORE_MO_ACCOUNT }}:admin:accountadmin \
+              -p ${{ secrets.RESTORE_MO_PASSWORD }} \
+              -t 1 \
+              -c ./cases/$ds/
+              deactivate
+              if [ -f report/report.csv ]; then
+                mkdir -p report/$ds/
+                mv report/report.csv report/$ds/
+              fi
+            fi
+          done
+          for report_file in $(find report/* -name "report.csv" -type f -print); do
+            if cat $report_file | grep "failed_run" | grep -Ev "$FAILED_RUN_IGNORE_LIST"; then
+              echo "$(date '+%Y-%m-%d %T') - There are failed runs, please check details in $report_file."
+              exit 1
+            fi
+            if cat $report_file | grep "failed_diff" | grep -Ev "$FAILED_DIFF_IGNORE_LIST"; then
+              echo "$(date '+%Y-%m-%d %T') - There are failed diffs, please check details in $report_file."
+              exit 1
+            fi
+          done
+        env:
+          RUN_DATASETS: >
+            cmcciot_001,cmcciot_002,dmt_001,etao_001,etao_002,etao_003,etao_006,extremevision_001,
+            guangheng_001,slooong_001,slooong_002,slooong_003,suwen_001,sutpc_001,unre_001,unre_002,
+            unre_003,unre_004,unre_005,unre_006,us_001,worthcloud_001,shuanghe_001
+          FAILED_RUN_IGNORE_LIST: suwen_001,q16
+          FAILED_DIFF_IGNORE_LIST: unre_001,q03|unre_004,q03|suwen_001,q06|slooong_001,q02|slooong_003,q02|slooong_001,q08|slooong_003,q08|slooong_001,q20|etao_001,q07|extremevision_001,q07
+
+      - name: Upload Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: customer-test-logs
+          path: |
+            ${{ github.workspace }}/mo-nightly-regression/tools/mo-regression-test/*.log
+            ${{ github.workspace }}/mo-nightly-regression/tools/mo-regression-test/report/
+          retention-days: 7
+
+  run-auto-tests-after-upgrade:
+    runs-on: amd64-mo-guangzhou-medium8
+    environment:
+      name: dev
+    needs:
+      - upgrade-test
+    timeout-minutes: 60
+    if: needs.upgrade-test.outputs.mo-host && always() && !cancelled()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Allure
+        run: |
+          echo "$JAVA_HOME/bin" >> $GITHUB_PATH
+          export ALLURE_VERSION=2.20.0
+          curl -o allure-$ALLURE_VERSION.tgz -sL https://repo.maven.apache.org/maven2/io/qameta/allure/allure-commandline/$ALLURE_VERSION/allure-commandline-$ALLURE_VERSION.tgz
+          sudo tar -zxvf allure-$ALLURE_VERSION.tgz -C /usr/local/bin/
+          sudo ln -s /usr/local/bin/allure-$ALLURE_VERSION/bin/allure /usr/bin/allure
+
+      - name: Echo Python/Pip/Java/Allure Version
+        run: |
+          # echo `python -V`
+          # echo `pip -V`
+          echo `java -version`
+          echo `allure --version`
+
+      - name: Install Python Dependencies
+        run: |
+          set -uo pipefail
+          cd $GITHUB_WORKSPACE
+          python -m venv --without-pip .venv
+          source .venv/bin/activate
+          curl -sL https://bootstrap.pypa.io/get-pip.py | python 
+          python -m pip install --upgrade pip 
+          python -m pip install -r requirements.txt
+          python -V
+          pip -V
+          deactivate
+
+      - name: Run Aliyun Tests
+        id: run-tests
+        run: |
+          cd $GITHUB_WORKSPACE
+          source .venv/bin/activate
+          export PYTHONPATH=$(pwd)
+          # pytest --alluredir=./allure-results -m "not upgrade_test" src/tests/database_platform/
+          python src/upgrade/main.py \
+          --cluster-name ${{ vars.RESTORE_CLUSTER }} \
+          run-tests \
+          --clear-instance \
+          --env customized_instance_id=${customized_instance_id%%:*} \
+          --args src/tests/database_platform/ \
+          --opts "-m 'not upgrade_test'"
+          deactivate
+        env:
+          # RESTORE_CLUSTER: ${{ needs.upgrade-test.outputs.mo-host }}
+          normal_email_1: ${{ vars.UPGRADE_AUTO_TEST_EMAIL }}
+          # normal_password_1: ${{ secrets.UPGRADE_TEST_PASSWORD }}
+          customized_email: ${{ vars.UPGRADE_TEST_EMAIL }}
+          customized_password: ${{ secrets.UPGRADE_TEST_PASSWORD }}
+          customized_instance_id: ${{ needs.upgrade-test.outputs.mo-usr }}
+          customized_instance_password: ${{ needs.upgrade-test.outputs.mo-pass || secrets.INSTANCE_PASSWORD }}
+          register_email_prefix: ${{ secrets.REGISTER_EMAIL_PREFIX }}
+
+      - name: Send Result
+        if: ${{ always() }}
+        run: |
+          cd $GITHUB_WORKSPACE
+          source .venv/bin/activate
+          export PYTHONPATH=$(pwd)
+          python - << EOF
+          from src.cloud.moc.cluster import MOClusterManager
+          from src.tests.conftest import init_k8s_client
+          MOClusterManager(init_k8s_client('controller')).set_proxy('${{ steps.run-tests.outputs.default-cluster }}')
+          EOF
+          python send_result.py test
+          deactivate
+        env:
+          security_password: ${{secrets.SECURITY_PASSWORD}}
+
+      - name: Upload Files
+        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: after-upgrade-auto-tests-report
+          path:
+            ${{ github.workspace }}/*.log
+          retention-days: 7
+
+  run-bvt-tests-after-upgrade:
+    runs-on: amd64-mo-guangzhou-medium8
+    environment:
+      name: dev
+    needs:
+      - upgrade-test
+    timeout-minutes: 90
+    if: needs.upgrade-test.outputs.mo-host && always() && !cancelled()
+    steps:
+      - name: Checkout mo-tester
+        uses: actions/checkout@v4
+        with:
+          repository: matrixorigin/mo-tester
+          ref: main
+          path: mo-tester
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Checkout matrixone
+        uses: actions/checkout@v4
+        with:
+          repository: matrixorigin/matrixone
+          ref: ${{ vars.BUILD_MO_BRANCH }}
+          path: matrixone
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      # - name: Set Up Java1.8
+      #   uses: actions/setup-java@v4
+      #   with:
+      #     distribution: temurin
+      #     java-version: 8
+
+      - name: Start BVT Test
+        id: bvt_on_pr_version
+        run: |
+          echo "$JAVA_HOME/bin" >> $GITHUB_PATH
+          export PATH=$PATH:$JAVA_HOME/bin
+          export LC_ALL="C.UTF-8"
+          locale
+          dbs=
+          for db in $(MYSQL_PWD=${{ needs.upgrade-test.outputs.mo-sys-pass }} \
+            mysql -h ${{ needs.upgrade-test.outputs.mo-host }} \
+            -P ${{ needs.upgrade-test.outputs.mo-port }} \
+            -u ${{ needs.upgrade-test.outputs.mo-sys-usr }} \
+            -e "show databases" --skip-column-names | awk '{print $1}'); do
+            if [ ! $db = "test" ]; then
+              dbs="$dbs,$db"
+            fi
+          done
+          dbs=${dbs:1}
+          cd $GITHUB_WORKSPACE/mo-tester
+          sed -i.bak "s/\(^builtindb:\).*/\1 $dbs/" run.yml
+          sed -i.bak \
+          -e 's/socketTimeout:.*/socketTimeout: 300000/' \
+          -e 's/\(serverTimezone:\).*/\1 "UTC"/' \
+          -e 's/127.0.0.1:6001/${{ needs.upgrade-test.outputs.mo-host }}:${{ needs.upgrade-test.outputs.mo-port }}/' \
+          -e 's/\(name:\).*/\1 "${{ needs.upgrade-test.outputs.mo-sys-usr }}"/' \
+          -e 's/\(password:\).*/\1 "${{ needs.upgrade-test.outputs.mo-sys-pass }}"/' \
+          -e 's/\(sysuser:\).*/\1 "${{ needs.upgrade-test.outputs.mo-sys-usr }}"/' \
+          -e 's/\(syspass:\).*/\1 "${{ needs.upgrade-test.outputs.mo-sys-pass }}"/' \
+          mo.yml
+          cat run.yml
+          cat mo.yml
+          exclude_tests=optimistic,log,tenant/privilege/role7_special_roles_accountadmin.sql,\
+          zz_accesscontrol/drop_user.sql,function/func_wasm.sql,\
+          snapshot,publication_subscription,pitr,tenant/pub_sub.sql,\
+          ddl/create_retention_table.sql,ddl/alter_publish_subscribe_table.sql
+          cases_path=$GITHUB_WORKSPACE/${{ vars.BVT_TESTS }}
+          if [ -d "$cases_path" ]; then
+            if [ ${cases_path: -1} = '/' ]; then
+              cases_path=${cases_path%?}
+            fi
+            find $cases_path -type f ! -name "*.result" -exec \
+              sed -i 's/user=\(.*\)dump\&password=.*/user=\1dump\&password=${{ needs.upgrade-test.outputs.mo-sys-pass }}/g' {} \;
+            for exclude in $(find $cases_path -type f ! -name "*.result" -exec grep -l "\$resources" {} \;); do
+              exclude_tests="${exclude_tests},${exclude##*cases/}"
+            done
+            echo "Exclude tests to run: ${exclude_tests}"
+          elif [ -f "$cases_path" ]; then
+            sed -i 's/user=\(.*\)dump\&password=.*/user=\1dump\&password=${{ needs.upgrade-test.outputs.mo-sys-pass }}/g' $cases_path
+          else
+            echo "The cases path must be file or directory."
+            exit 1
+          fi
+          ./run.sh -p $cases_path -e ${exclude_tests} -n -g
+
+      - name: Upload Files
+        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: after-upgrade-bvt-tests-report
+          path:
+            ${{ github.workspace }}/mo-tester/
+          retention-days: 7
+
+  clear:
+    runs-on: amd64-mo-guangzhou-medium8
+    environment:
+      name: dev
+    needs:
+      - restore
+      - run-tpch-tests
+      - run-sysbench-tests
+      - run-tpcc-tests
+      - run-bigdata-tests
+      - run-customer-tests
+      - run-auto-tests-after-upgrade
+      - run-bvt-tests-after-upgrade
+    timeout-minutes: 60
+    if: always() && !cancelled()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: mocloud-tester
+
+      - name: Install Python Dependencies
+        if: ${{ contains(fromJSON('["restore", "upgrade"]'), vars.UPGRADE_TEST_ACTION) && vars.CLEAR_CLUSTER_AFTER_TESTS == 'true' || vars.UPGRADE_TEST_ACTION == 'clear' }}
+        run: |
+          set -uo pipefail
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          echo "/home/runner/externals/node20/bin" >> $GITHUB_PATH
+          python -m venv --without-pip .venv
+          source .venv/bin/activate
+          curl -sL https://bootstrap.pypa.io/get-pip.py | python - -i https://mirrors.aliyun.com/pypi/simple
+          python -m pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple
+          python -m pip install -i https://mirrors.aliyun.com/pypi/simple -r requirements.txt
+          deactivate
+
+      - name: Clear MO Cluster
+        if: ${{ contains(fromJSON('["restore", "upgrade"]'), vars.UPGRADE_TEST_ACTION) && vars.CLEAR_CLUSTER_AFTER_TESTS == 'true' || vars.UPGRADE_TEST_ACTION == 'clear' }}
+        id: clear
+        run: |
+          cd $GITHUB_WORKSPACE/mocloud-tester
+          source .venv/bin/activate
+          export PYTHONPATH=$(pwd)
+          python src/upgrade/main.py clear --force
+          deactivate
+        env:
+          RESTORE_CLUSTER: ${{ vars.RESTORE_CLUSTER }}
+
+      - name: Clear MO Data
+        if: ${{ steps.clear.outputs.restore-bucket }}
+        run: |
+          if [ ! -z $(echo $RESTORE_S3_BUCKET_FILE_PATH) ]; then
+            if [ $(uname -m) = 'x86_64' ]; then
+              curl -O https://dl.minio.org.cn/client/mc/release/linux-amd64/mc
+            fi
+            chmod +x ./mc
+            ./mc alias set oss http://oss-cn-hangzhou.aliyuncs.com $RESTORE_ALIYUN_AK $RESTORE_ALIYUN_SK
+            for p in $(echo $RESTORE_S3_BUCKET_FILE_PATH); do
+              ./mc rm -q -r --force oss/$RESTORE_S3_BUCKET/$p > /dev/null
+            done
+          fi
+        env:
+          RESTORE_ALIYUN_AK: ${{ secrets.RESTORE_ALIYUN_AK }}
+          RESTORE_ALIYUN_SK: ${{ secrets.RESTORE_ALIYUN_SK }}
+          RESTORE_S3_BUCKET: ${{ steps.clear.outputs.restore-bucket }}
+          RESTORE_S3_BUCKET_FILE_PATH: ${{ needs.restore.outputs.restore-bucket-paths || steps.clear.outputs.restore-bucket-path }}
